@@ -58,6 +58,13 @@ $env:WAREHOUSE_PATH = Join-Path $runDir 'live.duckdb'
 & $py -m ecommerce.load --live
 ```
 
+If pytest reports `WinError 5` for its default temporary directory or `.pytest_cache`, use a fresh project-local directory and disable the cache provider for that run.
+
+```powershell
+$testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
+& $py -m pytest -q --basetemp $testTmp -p no:cacheprovider
+```
+
 | Environment variable | Default | Behavior |
 | --- | --- | --- |
 | `WAREHOUSE_PATH` | `data/warehouse.duckdb` | Relative paths resolve from the current directory. Use a Phase 1 warehouse and close other DuckDB connections before running the CLI. |
