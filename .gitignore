@@ -1,0 +1,58 @@
+# Python virtual environments
+.venv/
+venv/
+.venv-*/
+.virtualenv/
+ENV/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Generated databases
+/data/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+
+# dbt artifacts
+target/
+dbt_packages/
+dbt_modules/
+logs/
+.user.yml
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+.envrc
+.secrets/
+secrets/
+credentials.json
+credentials.local.*
+*.pem
+*.key
+*.pfx
+*.p12
+.netrc
+_netrc
+.pypirc
+
+# Python build artifacts
+*.egg-info/
+build/
+dist/
+
+# Local assistant configuration
+/.claude/
+/CLAUDE.local.md
+/.codex/
+/.agents/
+/.mcp.json

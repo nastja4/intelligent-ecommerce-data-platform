@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecommerce"
+version = "0.1.0"
+description = "Local analytics for synthetic e-commerce cart data"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "duckdb",
+    # The 1.12 resolution pulled in an alpha parser dependency.
+    "dbt-core>=1.11,<1.12",
+    "dbt-duckdb",
+    "httpx",
+    "fastapi",
+    "uvicorn",
+    "mcp>=2,<3",
+    "pydantic",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["ecommerce"]
