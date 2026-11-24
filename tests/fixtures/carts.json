@@ -1,0 +1,40 @@
+[
+  {
+    "carts": [
+      {
+        "id": 201,
+        "userId": 301,
+        "products": [
+          {"id": 101, "price": 5.00, "quantity": 1, "total": 5.00, "discountPercentage": 20, "discountedTotal": 4.00},
+          {"id": 101, "price": 5.00, "quantity": 1, "total": 5.00, "discountPercentage": 20, "discountedTotal": 4.00}
+        ],
+        "total": 10.00,
+        "discountedTotal": 8.00,
+        "totalProducts": 1,
+        "totalQuantity": 2
+      },
+      {
+        "id": 202,
+        "userId": 302,
+        "products": [
+          {"id": 102, "price": 10.00, "quantity": 1, "total": 10.00, "discountPercentage": 10, "discountedTotal": 9.00}
+        ],
+        "total": 10.00,
+        "discountedTotal": 9.00,
+        "totalProducts": 1,
+        "totalQuantity": 1
+      }
+    ],
+    "total": 3,
+    "skip": 0,
+    "limit": 2
+  },
+  {
+    "carts": [
+      {"id": 203, "userId": 301, "products": [], "total": 0, "discountedTotal": 0, "totalProducts": 0, "totalQuantity": 0}
+    ],
+    "total": 3,
+    "skip": 2,
+    "limit": 2
+  }
+]

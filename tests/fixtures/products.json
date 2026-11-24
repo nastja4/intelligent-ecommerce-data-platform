@@ -1,0 +1,20 @@
+[
+  {
+    "products": [
+      {"id": 101, "title": "Fixture Notebook", "category": "stationery", "price": 5.00, "stock": 9},
+      {"id": 102, "title": "Fixture Mug", "category": "kitchen", "price": 10.00, "stock": 10}
+    ],
+    "total": 4,
+    "skip": 0,
+    "limit": 2
+  },
+  {
+    "products": [
+      {"id": 103, "title": "Fixture Plate", "category": "kitchen", "price": 7.50, "stock": 11},
+      {"id": 104, "title": "Fixture Folder", "category": "stationery", "price": 2.75, "stock": 0}
+    ],
+    "total": 4,
+    "skip": 2,
+    "limit": 2
+  }
+]

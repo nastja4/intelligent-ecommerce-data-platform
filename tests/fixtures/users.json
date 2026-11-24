@@ -1,0 +1,17 @@
+[
+  {
+    "users": [
+      {"id": 301, "testMetadata": {"group": "fixture-a"}},
+      {"id": 302, "testMetadata": {"group": "fixture-b"}}
+    ],
+    "total": 3,
+    "skip": 0,
+    "limit": 2
+  },
+  {
+    "users": [{"id": 303, "testMetadata": {"group": "fixture-c"}}],
+    "total": 3,
+    "skip": 2,
+    "limit": 2
+  }
+]
