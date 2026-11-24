@@ -1,0 +1,93 @@
+version: 2
+
+models:
+  - name: stg_products
+    description: One row per product with typed catalog attributes.
+    columns:
+      - name: product_id
+        description: Source product identifier.
+        data_tests: [not_null, unique]
+      - name: title
+        description: Product title in the catalog snapshot.
+        data_tests: [not_null]
+      - name: category
+        description: Product category in the catalog snapshot.
+        data_tests: [not_null]
+      - name: price
+        description: Source catalog price as a fixed-scale decimal.
+        data_tests: [not_null, non_negative]
+      - name: stock
+        description: Catalog stock quantity as a whole number.
+        data_tests: [not_null, non_negative]
+      - name: ingested_at
+        description: UTC instant of the Bronze load.
+        data_tests: [not_null]
+
+  - name: stg_users
+    description: One row per user with the identifier needed for cart relationships.
+    columns:
+      - name: user_id
+        description: Source user identifier.
+        data_tests: [not_null, unique]
+      - name: ingested_at
+        description: UTC instant of the Bronze load.
+        data_tests: [not_null]
+
+  - name: stg_carts
+    description: One row per cart, including carts with empty item arrays.
+    columns:
+      - name: cart_id
+        description: Source cart identifier.
+        data_tests: [not_null, unique]
+      - name: user_id
+        description: Source user identifier for the cart owner.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: user_id
+      - name: source_total
+        description: Gross total reported by DummyJSON as a fixed-scale decimal.
+        data_tests: [not_null, non_negative]
+      - name: source_discounted_total
+        description: Discounted total reported by DummyJSON as a fixed-scale decimal.
+        data_tests: [not_null, non_negative]
+      - name: items
+        description: Source item array in original order. Missing or invalid arrays fail validation.
+        data_tests: [not_null]
+      - name: ingested_at
+        description: UTC instant of the Bronze load.
+        data_tests: [not_null]
+
+  - name: stg_cart_items
+    description: One row per cart ID and source array ordinal, including repeated product lines.
+    columns:
+      - name: cart_id
+        description: Identifier of the parent cart.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_carts')
+                field: cart_id
+      - name: item_ordinal
+        description: Zero-based position in the source item array.
+        data_tests: [not_null, non_negative]
+      - name: product_id
+        description: Identifier of the catalog product on the line.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: unit_price
+        description: Pre-discount unit price recorded on the cart line as a fixed-scale decimal.
+        data_tests: [not_null, non_negative]
+      - name: quantity
+        description: Whole-number quantity recorded on the cart line.
+        data_tests: [not_null, non_negative]
+      - name: ingested_at
+        description: UTC instant inherited from the parent cart.
+        data_tests: [not_null]

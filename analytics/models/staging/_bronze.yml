@@ -1,0 +1,34 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    description: Current raw snapshot written by the Python Bronze loader.
+    tables:
+      - name: raw_products
+        description: One row per source product ID.
+        columns:
+          - name: source_id
+            description: Source product identifier and primary key.
+          - name: payload
+            description: Complete source product JSON object.
+          - name: ingested_at
+            description: UTC instant shared by all records in this load.
+      - name: raw_users
+        description: One row per source user ID. Raw user attributes stay in Bronze.
+        columns:
+          - name: source_id
+            description: Source user identifier and primary key.
+          - name: payload
+            description: Complete source user JSON object for local Bronze storage.
+          - name: ingested_at
+            description: UTC instant shared by all records in this load.
+      - name: raw_carts
+        description: One row per source cart ID, including any nested product lines.
+        columns:
+          - name: source_id
+            description: Source cart identifier and primary key.
+          - name: payload
+            description: Complete source cart JSON object.
+          - name: ingested_at
+            description: UTC instant shared by all records in this load.
