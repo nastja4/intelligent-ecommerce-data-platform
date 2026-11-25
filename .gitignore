@@ -44,6 +44,11 @@ credentials.local.*
 .netrc
 _netrc
 .pypirc
+/.aws/
+/.dbt/
+/.docker/
+/.ssh/
+profiles.local.yml
 
 # Python build artifacts
 *.egg-info/

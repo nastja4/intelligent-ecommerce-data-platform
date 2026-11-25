@@ -1,215 +1,82 @@
 # Intelligent E-Commerce Data Platform
 
-This portfolio project will load synthetic DummyJSON data into DuckDB, transform and validate it with dbt, and expose cart analytics through FastAPI and MCP. Cart values represent simulated activity.
+A local analytics platform that turns synthetic DummyJSON shopping carts into a validated DuckDB snapshot. A retail analyst can use REST or ask Claude Code to compare products and categories, rank customers by simulated cart value, and find products below a stock threshold.
 
-The pipeline loads products, users, and carts into DuckDB Bronze, builds the Silver views and Gold tables with dbt, and publishes the warehouse after validation. FastAPI and a stdio MCP server expose the current snapshot through the same read-only query services. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
+**Verified locally on Windows and Linux.** Hosted CI and GHCR publication are pending. [Acceptance status](PROGRESS.md)
 
-## Development setup
+## Architecture
 
-From the repository root in PowerShell, use Python 3.12. Create the virtual environment only if it is missing.
+```mermaid
+flowchart LR
+    Source["DummyJSON API or synthetic fixtures"] --> Extract["Python extraction and transactional load"]
+    subgraph Candidate["Candidate DuckDB file"]
+        Bronze["Bronze · raw JSON tables"] --> Silver["Silver · typed dbt views"]
+        Silver --> Gold["Gold · dbt analytical tables"]
+    end
+    Extract --> Bronze
+    Gold --> Gate{"dbt tests and relation checks"}
+    Gate -->|"Pass · replace file"| Published["Published DuckDB snapshot"]
+    Gate -->|"Fail · discard candidate"| Previous["Previous snapshot stays available"]
+    Published --> Queries["Shared read-only Python queries"]
+    Queries --> REST["FastAPI · JSON and Swagger"]
+    Queries --> MCP["MCP server · stdio"]
+    MCP --> Claude["Claude Code"]
+```
+
+| Layer | Implementation |
+| --- | --- |
+| Bronze | Three tables preserve source IDs, raw JSON, and an ingestion timestamp. Paginated extraction retries transient errors. The transactional load deduplicates identical records and rejects conflicting IDs. |
+| Silver | Four typed views validate source keys and relationships. Cart items retain their zero-based source position, including repeated product lines. |
+| Gold | Six tables serve cart, product, category, customer, inventory, and snapshot analytics. Gross simulated cart value uses pre-discount cart-line price × quantity. |
+
+The refresh command builds a separate candidate, runs `dbt build`, checks the expected relation names and types, and closes its handles before replacing the active file. Data tests check required fields, uniqueness, references, numeric ranges, and reconciliation across the marts. The API and MCP server share typed contracts and fixed, parameterized Gold queries. Customers are exposed by ID and aggregate metrics. [Detailed data model](docs/data-model.md)
+
+**Stack:** Python 3.12, HTTPX, DuckDB, dbt Core and dbt-duckdb, FastAPI and Pydantic, official MCP Python SDK 2.3.0, Claude Code, pytest, Docker, GitHub Actions, and GHCR.
+
+## Quick start on Windows
+
+From the repository root in PowerShell, using Python 3.12:
 
 ```powershell
 if (-not (Test-Path .\.venv\Scripts\python.exe)) { py -3.12 -m venv .venv }
-$python = '.\.venv\Scripts\python.exe'
-& $python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
-& $python -m pip install --no-deps -e .
-& $python -m pip check
-& .\.venv\Scripts\dbt.exe --version
-```
-
-`pyproject.toml` declares runtime dependencies and a `test` extra for pytest. `requirements.lock` pins the combined development environment, including transitive dependencies and artifact hashes. Regenerate it with uv 0.13.9 using the command in its header, then verify it on Windows and Linux.
-
-The lock has been installed and smoke-tested on Windows x86-64 with Python 3.12. The Linux x86-64 wheel set resolved and installed into an isolated target on Windows. Running the import and dbt checks on a Linux host is still pending.
-
-## Bronze ingestion
-
-Run the fixture refresh twice from the repository root to check repeatability. Use a fresh warehouse under the ignored `data` directory.
-
-```powershell
 $py = (Resolve-Path .\.venv\Scripts\python.exe).Path
-$runDir = Join-Path (Get-Location).Path ("data/bronze-check-" + [guid]::NewGuid())
-$env:WAREHOUSE_PATH = Join-Path $runDir 'warehouse.duckdb'
-& $py -m ecommerce.load --fixture-dir tests/fixtures
-& $py -m ecommerce.load --fixture-dir tests/fixtures
-& $py -m pytest -q tests/test_extract.py tests/test_load.py
-```
+& $py -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+& $py -m pip install --no-deps -e .
+& $py -m pip check
 
-Each refresh prints `{"products": 4, "users": 3, "carts": 3}`. The CLI creates the parent directory as needed. Verify counts and unique source IDs with a read-only connection.
-
-```powershell
-@'
-import os
-import duckdb
-
-with duckdb.connect(os.environ["WAREHOUSE_PATH"], read_only=True) as connection:
-    for table, expected in (("raw_products", 4), ("raw_users", 3), ("raw_carts", 3)):
-        counts = connection.execute(
-            f"SELECT count(*), count(DISTINCT source_id) FROM bronze.{table}"
-        ).fetchone()
-        assert counts == (expected, expected), (table, counts)
-        print(f"{table}: {counts[0]} rows")
-'@ | & $py -
-```
-
-For a separate live run, use a different warehouse in the same directory. Live data includes full synthetic source user objects. Keep the warehouse local.
-
-```powershell
-$env:WAREHOUSE_PATH = Join-Path $runDir 'live.duckdb'
-& $py -m ecommerce.load --live
-```
-
-If pytest reports `WinError 5` for its default temporary directory or `.pytest_cache`, use a fresh project-local directory and disable the cache provider for that run.
-
-```powershell
-$testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
-& $py -m pytest -q --basetemp $testTmp -p no:cacheprovider
-```
-
-| Environment variable | Default | Behavior |
-| --- | --- | --- |
-| `WAREHOUSE_PATH` | `data/warehouse.duckdb` | Relative paths resolve from the current directory. Use a Phase 1 warehouse and close other DuckDB connections before running the CLI. |
-| `DUMMYJSON_TIMEOUT_SECONDS` | `10` | Positive HTTP timeout in seconds. |
-| `DUMMYJSON_PAGE_SIZE` | `50` | Live request limit from 1 to 100. |
-| `DUMMYJSON_MAX_RETRIES` | `2` | Additional attempts per live page, from 0 to 5, with bounded exponential backoff. |
-
-Fixture files contain arrays of recorded response pages with `total`, `skip`, `limit` and the corresponding collection. Both modes validate page metadata and record IDs. Live requests advance `skip` by the number of rows returned and retry transient transport errors, HTTP 429, and HTTP 5xx. The loader stages all three collections, collapses identical payloads by ID, and rejects conflicting payloads before writing.
-
-Each table stores `source_id`, the complete JSON `payload`, and an `ingested_at` UTC instant. One transaction replaces all three sets of rows, removing IDs absent from the new snapshot. A failed insert rolls the transaction back. A rerun preserves the logical rows and records the new ingestion time. Use the Bronze-only command for disposable warehouses and the validated refresh below for the active warehouse.
-
-## Validated warehouse refresh
-
-Run from the repository root in PowerShell. **Stop all DuckDB readers and writers before replacement**, including interactive DuckDB sessions, application processes, and any containers sharing the warehouse. Run one refresh at a time.
-
-```powershell
-$py = (Resolve-Path .\.venv\Scripts\python.exe).Path
 $env:WAREHOUSE_PATH = Join-Path (Get-Location).Path 'data/warehouse.duckdb'
 & $py -m ecommerce.refresh --fixture-dir tests/fixtures
-
-# Run the live smoke test against its own warehouse.
-$env:WAREHOUSE_PATH = Join-Path (Get-Location).Path 'data/live-smoke.duckdb'
-& $py -m ecommerce.refresh --live
-```
-
-The command loads a sibling candidate file, closes the Bronze writer, and runs `dbt build` in a subprocess using the same Python interpreter. Only the subprocess receives the candidate as `WAREHOUSE_PATH`. When dbt succeeds, the refresh checks the names and types of the expected Bronze, Silver, and Gold relations, closes the verification connection, and replaces the destination file with `os.replace`. An existing WAL blocks replacement so the warehouse can be recovered first.
-
-Exit code `0` means publication succeeded, `1` means the refresh failed, and `2` indicates invalid command arguments. A failed refresh leaves the prior warehouse intact and cleans up its candidate and sidecars. Output includes candidate row counts and, if dbt validation fails, failed dbt node names and counts without source payloads or raw dbt errors. Use the disposable fixture build below to generate dbt documentation.
-
-## Silver staging
-
-Load a fresh fixture warehouse and run dbt against the same absolute `WAREHOUSE_PATH`. Run these commands from the repository root in PowerShell.
-
-```powershell
-$py = (Resolve-Path .\.venv\Scripts\python.exe).Path
-$dbt = (Resolve-Path .\.venv\Scripts\dbt.exe).Path
-$runDir = Join-Path (Get-Location).Path ("data/silver-check-" + [guid]::NewGuid())
-$env:WAREHOUSE_PATH = Join-Path $runDir 'warehouse.duckdb'
-& $py -m ecommerce.load --fixture-dir tests/fixtures
-& $dbt build --project-dir analytics --profiles-dir analytics
-```
-
-The dbt profile selects DuckDB, and the project materializes staging models as views in `silver` and marts as tables in `gold`. Source declarations point to the three tables in `bronze`. The schema naming macro preserves the exact layer names.
-
-| Silver view | Grain and fields |
-| --- | --- |
-| `stg_products` | One row per product. Projects title, category, catalog price, and stock. |
-| `stg_users` | One row per user. Projects the ID and ingestion timestamp only. |
-| `stg_carts` | One row per cart. Projects the owner ID, source totals, and ordered item array. Keeps empty carts. |
-| `stg_cart_items` | One row per cart ID and zero-based source array ordinal. Projects product ID, cart-line unit price, and whole-number quantity. |
-
-`json_each` expands each cart's item array. Its key is the item position, so repeated product IDs in one cart remain separate lines. Missing fields and invalid JSON types become null and fail required-field tests. A malformed item array fails on its parent cart. The dbt tests also check source-key uniqueness, foreign keys, non-negative values, and the composite cart-item grain.
-
-Inspect the catalog and item rows after the dbt process exits.
-
-```powershell
-@'
-import os
-import duckdb
-
-with duckdb.connect(os.environ["WAREHOUSE_PATH"], read_only=True) as con:
-    print(con.execute("""
-        SELECT table_schema, table_name, table_type
-        FROM information_schema.tables
-        WHERE table_schema IN ('bronze', 'silver')
-        ORDER BY table_schema, table_name
-    """).fetchall())
-    print(con.execute("""
-        SELECT cart_id, item_ordinal, product_id, unit_price, quantity
-        FROM silver.stg_cart_items
-        ORDER BY cart_id, item_ordinal
-    """).fetchall())
-'@ | & $py -
-```
-
-The fixture has 4 products, 3 users, 3 carts, and 3 cart items. Cart 201 has two lines for product 101 at ordinals 0 and 1. Cart 203 remains in `stg_carts` with zero item rows.
-
-## Gold business analytics
-
-The fixture build above also produces six Gold tables.
-
-| Table | Grain and calculation | Fixture rows |
-| --- | --- | ---: |
-| `cart_summary` | One row per cart. Sums gross line value and quantity, with zeroes for empty carts. | 3 |
-| `product_performance` | One row per product with cart activity. Sums gross line value and quantity and attaches the catalog title and category. | 2 |
-| `category_performance` | One row per category with cart activity. Rolls up product value and quantity. | 2 |
-| `customer_performance` | One row per customer with carts. Returns only the customer ID, gross cart value, and cart count. | 2 |
-| `inventory_alerts` | One row per catalog product, including products without cart activity. Carries stock unchanged for consumer-side threshold filtering. | 4 |
-| `business_kpis` | One snapshot row. Aggregates the cart summaries and records the snapshot timestamp. | 1 |
-
-Gross simulated cart value is the sum of the cart-line unit price times quantity before discounts. These amounts describe synthetic cart activity. Money remains decimal with two places, and average cart value uses exact decimal division with ties rounded to even. Fixture KPIs are gross value **20.00**, cart count **3**, average cart value **6.67**, and total item quantity **3**. A snapshot with no carts still returns one KPI row with zero totals and a null average. An empty cart counts and contributes zero. The snapshot timestamp is the latest ingestion instant across the source collections, with Gold build time used when all three are empty.
-
-After running the fixture build above, generate the dbt catalog and lineage and run the full Python suite.
-
-```powershell
-& $dbt docs generate --project-dir analytics --profiles-dir analytics
-$testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
-& $py -m pytest -q --basetemp $testTmp -p no:cacheprovider
-```
-
-dbt writes the documentation and lineage artifacts under `analytics/target`. Its reconciliation test compares gross value across carts, products, categories, customers and KPIs, plus applicable quantity totals and cart counts. The Python integration tests check hand-calculated values, including empty carts and a wholly empty snapshot.
-
-## REST API
-
-Run from the repository root in PowerShell. Set `WAREHOUSE_PATH` to the validated warehouse, preferably as an absolute path. If omitted, it defaults to `data/warehouse.duckdb` relative to the process working directory. Serving requires only the warehouse file. No DummyJSON connection, Claude credentials, or separate LLM API key is required.
-
-```powershell
-$py = (Resolve-Path .\.venv\Scripts\python.exe).Path
-$env:WAREHOUSE_PATH = Join-Path (Get-Location).Path 'data/warehouse.duckdb'
+if ($LASTEXITCODE) { throw 'Fixture refresh failed' }
 & $py -m ecommerce.api
 ```
 
-Native startup binds to `127.0.0.1:8000`. Open Swagger UI at <http://127.0.0.1:8000/docs> or use the OpenAPI JSON at <http://127.0.0.1:8000/openapi.json>. In another PowerShell terminal, run these requests.
+Open [Swagger UI](http://127.0.0.1:8000/docs) or [OpenAPI JSON](http://127.0.0.1:8000/openapi.json). Fixture KPIs are **20.00 gross simulated cart value**, **3 carts**, **6.67 average cart value**, and **3 items**.
+
+Use the same absolute `WAREHOUSE_PATH` for refresh and serving. To test the live source, assign a different path such as `data/live-smoke.duckdb` and run `& $py -m ecommerce.refresh --live`. Live raw source data stays in the local warehouse. Stop readers and writers before replacing any published warehouse and run one refresh at a time.
+
+## REST and MCP
+
+| REST GET endpoint | MCP tool | Result |
+| --- | --- | --- |
+| `/health` | — | Warehouse readiness |
+| `/api/v1/kpis` | `get_business_kpis` | Snapshot KPIs |
+| `/api/v1/products/top?limit=5` | `get_top_products` | Ranked products |
+| `/api/v1/categories` | `get_category_performance` | Category values and quantities |
+| `/api/v1/customers/top?limit=5` | `get_top_customers` | Ranked customer IDs and aggregates |
+| `/api/v1/inventory/low-stock?threshold=10` | `get_low_stock_products` | Inventory strictly below the threshold |
+
+From a second terminal:
 
 ```powershell
 $base = 'http://127.0.0.1:8000'
-Invoke-RestMethod "$base/health"
 Invoke-RestMethod "$base/api/v1/kpis"
 Invoke-RestMethod "$base/api/v1/products/top?limit=1" | ConvertTo-Json -Depth 5
-Invoke-RestMethod "$base/api/v1/categories" | ConvertTo-Json -Depth 5
-Invoke-RestMethod "$base/api/v1/customers/top?limit=10" | ConvertTo-Json -Depth 5
 Invoke-RestMethod "$base/api/v1/inventory/low-stock?threshold=10" | ConvertTo-Json -Depth 5
 ```
 
-Ranked lists default to 10 rows and accept `limit` from 1 through 100. Inventory accepts `threshold` from 0 through 10,000, defaults to 10, and returns products with stock strictly below it. Valid requests without matches return an empty `items` list. Analytical results contain the UTC snapshot timestamp and metric basis. Money is serialized as two-decimal strings, and customer rows contain IDs and aggregate metrics only.
+Ranked lists accept 1–100 rows and default to 10. The inventory threshold accepts 0–10,000 and defaults to 10. Empty matches return `items: []`. Responses carry the snapshot time and metric basis. Amounts use two-decimal strings. Invalid arguments return 422, unavailable warehouses return 503, and unexpected failures return a sanitized 500.
 
-The API returns 422 for invalid parameters, 503 for missing, uninitialized, or locked warehouses, and a sanitized 500 for unexpected errors. This local MVP has no production authentication. The snapshot supports synthetic cart activity without historical trends, completed sales, or verified currency. Stop all readers before replacing the warehouse.
-
-## MCP over stdio
-
-Use the same `WAREHOUSE_PATH` setting for the server. The installed official Python SDK is MCP 2.3.0. Start the process directly with `& $py -m ecommerce.mcp_server` when using a protocol client to manage stdin and stdout. Diagnostics go to stderr.
-
-| Tool | Arguments |
-| --- | --- |
-| `get_business_kpis` | None |
-| `get_top_products` | Optional integer `limit` |
-| `get_category_performance` | None |
-| `get_top_customers` | Optional integer `limit` |
-| `get_low_stock_products` | Optional integer `threshold` |
-
-Tools use the same schemas and ordering as REST. Unavailable warehouses produce tool errors. Tool discovery and calls can run independently of FastAPI.
-
-### Register with Claude Code
-
-From the repository root, use the existing Claude subscription and register the server in local scope for this project. Claude Code starts the stdio process itself. [Claude Code MCP registration](https://code.claude.com/docs/en/mcp)
+Claude Code launches the stdio server independently of FastAPI. With the validated fixture warehouse and the existing Claude subscription:
 
 ```powershell
 $py = (Resolve-Path .\.venv\Scripts\python.exe).Path
@@ -220,4 +87,70 @@ claude mcp list
 claude
 ```
 
-In Claude Code, open `/mcp` and confirm that `ecommerce` is connected. Ask for the current simulated cart KPIs, top products, and low-stock alerts. Ask for last month's completed revenue to check how Claude handles a metric outside the snapshot.
+Open `/mcp` in Claude Code and ask for the current simulated cart KPIs. The server also runs directly as `& $py -m ecommerce.mcp_server` when an MCP client manages stdin and stdout. [Verified demo scenarios](docs/demo.md)
+
+## Docker
+
+Use Docker Desktop in Linux container mode. The digest-pinned Python 3.12 image installs hash-verified dependencies and runs as UID/GID 10001. Start with a fresh named volume so Docker can initialize its ownership.
+
+```powershell
+docker build --platform linux/amd64 --tag ecommerce-mvp:local .
+$volume = 'ecommerce-mvp'
+docker volume create $volume
+docker run --rm --mount "type=volume,source=$volume,target=/data" ecommerce-mvp:local python -m ecommerce.refresh --fixture-dir tests/fixtures
+docker run --detach --name ecommerce-api --publish 127.0.0.1:8000:8000 --mount "type=volume,source=$volume,target=/data,readonly" ecommerce-mvp:local
+
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8000/api/v1/kpis
+(Invoke-WebRequest http://127.0.0.1:8000/docs -UseBasicParsing).StatusCode
+docker inspect --format '{{json .Mounts}}' ecommerce-api
+docker stop ecommerce-api
+docker rm ecommerce-api
+```
+
+FastAPI binds to `0.0.0.0:8000` inside the container. The host publication is restricted to `127.0.0.1`. Recreate the API container with the same volume to reuse its snapshot. The volume is mounted writable during refresh and read-only while serving. Use `docker run --rm -i --mount "type=volume,source=$volume,target=/data,readonly" ecommerce-mvp:local python -m ecommerce.mcp_server` for containerized MCP stdio.
+
+## Verification and CI/CD
+
+| Check | Observed result |
+| --- | --- |
+| Full Python suite | 66 passed on Windows and 66 passed in the Linux x86-64 image with networking disabled |
+| dbt build | 93 passes, including 83 data tests, with zero warnings, errors, or skips |
+| Live DummyJSON refresh | 194 products, 208 users, and 208 carts published after validation |
+| REST and MCP | Six endpoints and five stdio tools verified, with matching fixture results |
+| Claude Code | Single-tool and autonomous multi-tool execution demonstrated. An unsupported historical sales request was rejected. |
+| Container | Non-root startup, health, Swagger, fixture metrics, read-only storage, persistence across recreation, and image save/load verified |
+
+To run the full suite on Windows with a unique project-local temporary directory:
+
+```powershell
+$testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
+& $py -m pytest -q --basetemp $testTmp -p no:cacheprovider
+```
+
+To repeat the image checks:
+
+```powershell
+& .\scripts\Test-DockerImage.ps1 -Image ecommerce-mvp:local
+docker run --rm --network none ecommerce-mvp:local python -m pytest -q --basetemp /tmp/pytest-ecommerce -p no:cacheprovider
+```
+
+[GitHub Actions](.github/workflows/ci.yml) is configured for pull requests and pushes to `main`. A Windows/Ubuntu matrix installs from the lock and runs fixture-backed dbt and pytest. A separate Ubuntu job builds and smoke-tests the image. On a main push, the publish job requires all checks and an owner-approved commit SHA. It reloads the tested image, verifies its image ID, and uses a job-scoped `GITHUB_TOKEN` to publish to the lowercase GHCR repository path with the commit SHA tag.
+
+For an approved destination and reviewed commit, set the repository Actions variable `GHCR_APPROVED_SHA` to the exact commit before the authorized main push. Use the GitHub web UI or `gh variable set GHCR_APPROVED_SHA --repo OWNER/REPO --body COMMIT_SHA`. After the workflow succeeds, compare the digest in the publish job summary with the pull result. Private pulls require registry authentication with package read access. [Publication checklist and open acceptance criteria](PROGRESS.md)
+
+```powershell
+$image = 'ghcr.io/owner/repo:COMMIT_SHA'
+docker pull $image
+docker image inspect --format '{{json .RepoDigests}}' $image
+```
+
+## Known limitations
+
+- The project analyzes one synthetic cart snapshot. It has no completed sales events, historical trend data, or verified currency.
+- Refresh is a manual batch operation against a single local DuckDB file. Readers must close before publication.
+- REST is intended for local use and has no production authentication. MCP exposes predefined tools over local stdio.
+- Claude Code's phrasing and tool selection can vary. Tool results and the metric definitions are the reference for interpreting answers.
+- Hosted workflow execution, GHCR publication, and independent clean-checkout reproduction remain open.
+
+[Data model and metric definitions](docs/data-model.md) · [Claude Code demo](docs/demo.md) · [Cloud portability](docs/cloud-portability.md) · [Specification](SPEC.md) · [Implementation plan](PLAN.md) · [Progress and acceptance](PROGRESS.md)
