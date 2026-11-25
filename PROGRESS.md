@@ -79,3 +79,15 @@ The owner reported USD 0.0015199 in total estimated application usage and USD 1.
 The complete Windows Python suite passed 75 tests, including fixture dbt refreshes. The frontend typecheck, eight frontend tests and production build passed. The binary dependency lock resolved with hash checks on Windows and Linux Python 3.12. The Windows download verified 84 wheels, and `pip check` found no broken requirements. Production integration and hosted verification of the assistant are deferred.
 
 [Local assistant setup and limitations](docs/ai-assistant.md)
+
+## Phase 8 · Production full-stack Docker
+
+Built `ecommerce-fullstack:local` for Linux amd64. Docker reported 525,419,167 bytes. The pinned Node build ran `npm ci`, TypeScript and Vite production compilation. The Python runtime includes only compiled frontend files and uses UID/GID 10001.
+
+| Criterion | Evidence |
+| --- | --- |
+| AC-17 | The production image served the React dashboard, compiled JS/CSS, custom SVG favicon, six REST endpoints, Swagger, and OpenAPI. Unknown API routes returned JSON 404. Edge 158 at 1440 × 900 verified hash navigation and observed a single origin, `http://127.0.0.1:8000`, with no Vite traffic. |
+| AC-18 | Compose fixture refresh published 4 products, 3 users and 3 carts. A separate network-disabled dbt build passed all 93 nodes, including 83 data tests, with zero warnings, errors or skips. The fixture returned gross value 20.00, 3 carts, average value 6.67 and 3 items. A write-open on the serving DuckDB file failed with a read-only filesystem error. A synthetic SQLite charge and the original snapshot remained after container restart and replacement. |
+| AC-19 | The running image reported disabled chat and safely rejected a correctly formed disabled request, a foreign origin, and a sibling container spoofing a forwarded address. The image filesystem and bundle checks found no local environment files, generated databases, credentials, frontend source maps, Node, or node_modules. The network-disabled Linux suite verified enabled chat with a mocked Anthropic transport and genuine fixture MCP. |
+
+All 77 Python tests passed on Windows and Linux. Frontend typecheck, all 8 tests, and production build passed. The documented SQLite backup code preserved a synthetic balance when migrating to a new Docker volume. No real AI requests were made in this phase. Test containers were removed after verification and named volumes were retained. Hosted full-stack CI/CD and publication remain pending.

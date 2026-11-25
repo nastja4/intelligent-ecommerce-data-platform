@@ -2,6 +2,7 @@
 
 import asyncio
 import ipaddress
+import os
 import sqlite3
 from typing import Literal
 
@@ -9,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from ecommerce import ai_agent
-from ecommerce.ai_config import LEDGER_PATH, MODEL, AISettings
+from ecommerce.ai_config import MODEL, AISettings, usage_path_from_env
 from ecommerce.ai_usage import BudgetExceeded, Ledger, RateExceeded, usd
 
 router = APIRouter(prefix="/api/v1/chat", tags=["Local AI assistant"])
@@ -17,17 +18,32 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Local AI assistant"])
 HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 ALLOWED_HOSTS = HOSTS | {f"{host}:{port}" for host in HOSTS for port in (8000, 5173)}
 ORIGINS = {f"http://{host}" for host in ALLOWED_HOSTS}
+DOCKER_HOST = "127.0.0.1:8000"
+DOCKER_ORIGIN = f"http://{DOCKER_HOST}"
 
 
 def require_local(request: Request, response: Response) -> None:
     try:
-        local_peer = request.client is not None and ipaddress.ip_address(request.client.host).is_loopback
+        peer = ipaddress.ip_address(request.client.host) if request.client else None
     except ValueError:
-        local_peer = False
+        peer = None
+    host = request.headers.get("host", "").lower()
     origin = request.headers.get("origin")
-    if (not local_peer or request.headers.get("host", "").lower() not in ALLOWED_HOSTS
-        or (origin is not None and origin not in ORIGINS)
-        or request.headers.get("sec-fetch-site") == "cross-site"):
+    fetch_site = request.headers.get("sec-fetch-site")
+    native = (
+        peer is not None and peer.is_loopback and host in ALLOWED_HOSTS
+        and (origin is None or origin in ORIGINS) and fetch_site != "cross-site"
+    )
+    # The dedicated Compose bridge has one explicitly trusted gateway. Forwarded
+    # headers are disabled at Uvicorn, and sibling container addresses are rejected.
+    docker = (
+        isinstance(peer, ipaddress.IPv4Address) and peer.is_private and not peer.is_loopback
+        and str(peer) == os.environ.get("AI_DOCKER_TRUSTED_PEER")
+        and host == DOCKER_HOST and (origin is None or origin == DOCKER_ORIGIN)
+        and fetch_site in {None, "same-origin"}
+        and (request.method != "POST" or (origin == DOCKER_ORIGIN and fetch_site == "same-origin"))
+    )
+    if not (native or docker):
         raise HTTPException(403, "Chat is available only from the local dashboard.")
     if request.method == "POST" and request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
         raise HTTPException(415, "Use application/json for chat requests.")
@@ -51,7 +67,7 @@ def status() -> ChatStatus:
             return ChatStatus(enabled=False, availability="disabled")
         if not settings.configured:
             return ChatStatus(enabled=True, availability="unconfigured")
-        ledger = Ledger(LEDGER_PATH, settings.budget)
+        ledger = Ledger(usage_path_from_env(), settings.budget)
         spent, remaining = ledger.balances()
         maximum = ai_agent.Usage(
             input_tokens=ai_agent.RESERVED_INPUT_TOKENS, output_tokens=settings.output_tokens,
@@ -68,7 +84,7 @@ async def chat(payload: ai_agent.ChatRequest) -> ai_agent.ChatResponse:
         settings = AISettings.load()
         if not settings.enabled or not settings.configured:
             raise HTTPException(503, "The assistant is disabled or missing local configuration.")
-        ledger = Ledger(LEDGER_PATH, settings.budget)
+        ledger = Ledger(usage_path_from_env(), settings.budget)
         await asyncio.to_thread(ledger.admit, settings.requests_per_minute)
         return await ai_agent.run_chat(payload, settings, ledger)
     except HTTPException:

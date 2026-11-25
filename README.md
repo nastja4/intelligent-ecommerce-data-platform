@@ -91,24 +91,53 @@ Open `/mcp` in Claude Code and ask for the current simulated cart KPIs. The serv
 
 ## Docker
 
-Use Docker Desktop in Linux container mode. The digest-pinned Python 3.12 image installs hash-verified dependencies and runs as UID/GID 10001. Start with a fresh named volume so Docker can initialize its ownership.
+Use Docker Desktop in Linux container mode or Docker Engine 28 or newer with Compose. The build pins Node 22.16.0 and Python 3.12 by digest. Node builds the dashboard, then the Python runtime serves the compiled files and API on one origin. The runtime uses UID/GID 10001 and hash-locked Python dependencies.
 
 ```powershell
-docker build --platform linux/amd64 --tag ecommerce-mvp:local .
-$volume = 'ecommerce-mvp'
-docker volume create $volume
-docker run --rm --mount "type=volume,source=$volume,target=/data" ecommerce-mvp:local python -m ecommerce.refresh --fixture-dir tests/fixtures
-docker run --detach --name ecommerce-api --publish 127.0.0.1:8000:8000 --mount "type=volume,source=$volume,target=/data,readonly" ecommerce-mvp:local
+docker compose --env-file .env.example build app
+docker compose --env-file .env.example run --rm --no-deps refresh
+docker compose --env-file .env.example up --detach app
 
-Invoke-RestMethod http://127.0.0.1:8000/health
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/kpis
-(Invoke-WebRequest http://127.0.0.1:8000/docs -UseBasicParsing).StatusCode
-docker inspect --format '{{json .Mounts}}' ecommerce-api
-docker stop ecommerce-api
-docker rm ecommerce-api
+$base = 'http://127.0.0.1:8000'
+Start-Process $base
+Invoke-RestMethod "$base/health"
+Invoke-RestMethod "$base/api/v1/kpis"
+Invoke-RestMethod "$base/api/v1/chat/status"
+(Invoke-WebRequest "$base/docs" -UseBasicParsing).StatusCode
 ```
 
-FastAPI binds to `0.0.0.0:8000` inside the container. The host publication is restricted to `127.0.0.1`. Recreate the API container with the same volume to reuse its snapshot. The volume is mounted writable during refresh and read-only while serving. Use `docker run --rm -i --mount "type=volume,source=$volume,target=/data,readonly" ecommerce-mvp:local python -m ecommerce.mcp_server` for containerized MCP stdio.
+Stop any native FastAPI process on port 8000 before starting Docker. The published host port binds only to `127.0.0.1`. Use that address for containerized chat. Compose places the app on a dedicated bridge and the chat routes verify its gateway, host, and browser origin. Keep this service local and the bridge dedicated to this application. If `172.30.80.0/24` conflicts with a local network, choose an unused private subnet and update both the gateway and trusted peer in `compose.yaml`. [Docker port binding](https://docs.docker.com/engine/network/port-publishing/)
+
+The warehouse volume is writable only for maintenance. The separate usage volume stays writable while serving. Both named volumes survive stop, restart, replacement and `down`. Keep the same Compose project name and avoid `down --volumes`. Stop all readers before refresh.
+
+```powershell
+docker compose --env-file .env.example stop app
+docker compose --env-file .env.example run --rm --no-deps refresh
+docker compose --env-file .env.example up --detach app
+docker compose --env-file .env.example restart app
+# Stop and remove the service container while preserving both volumes.
+docker compose --env-file .env.example down
+```
+
+Fixture refresh is a separate, explicit operation. The existing live refresh and MCP stdio commands remain available. Run `python -m ecommerce.refresh --live` as a command override for the maintenance service only when intentionally refreshing from DummyJSON.
+
+### Optional AI at runtime
+
+The standard Compose service runs with AI disabled. To explicitly start the same app with AI enabled, first [migrate any native usage ledger](docs/ai-assistant.md#migrate-the-native-usage-ledger) while both apps are stopped. Then supply the key through a masked prompt in PowerShell. The Docker daemon and users with Docker administrative access can inspect runtime environment variables.
+
+```powershell
+docker compose --env-file .env.example stop app
+$key = Read-Host 'Anthropic API key' -AsSecureString
+try {
+    $env:ANTHROPIC_API_KEY = [System.Net.NetworkCredential]::new('', $key).Password
+    docker compose --env-file .env.example run --detach --no-deps --service-ports --name ecommerce-ai-local --env AI_ENABLED=true --env ANTHROPIC_API_KEY app
+} finally {
+    Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+    $key.Dispose()
+}
+```
+
+Use `docker stop ecommerce-ai-local` and `docker start ecommerce-ai-local` to restart that configured container. To return to disabled mode, stop and remove `ecommerce-ai-local`, then start the standard Compose service. Keep the usage volume across mode changes. Additional non-secret limits can be passed with `--env` as described in the [local assistant guide](docs/ai-assistant.md).
 
 ## Verification and CI/CD
 
@@ -155,7 +184,7 @@ docker image inspect --format '{{json .RepoDigests}}' $image
 
 ## Optional React dashboard
 
-[Commerce Intelligence](frontend/README.md) provides a local browser interface for the existing REST metrics, including category performance, independent ranking filters, and a low-stock threshold. It runs separately from the published backend image.
+[Commerce Intelligence](frontend/README.md) provides a local browser interface for the existing REST metrics, including category performance, independent ranking filters, and a low-stock threshold. During development, Vite runs at `127.0.0.1:5173` and proxies requests to native FastAPI. The full-stack Docker image serves everything from `127.0.0.1:8000` without Vite.
 
 [Data model and metric definitions](docs/data-model.md) · [Claude Code demo](docs/demo.md) · [Cloud portability](docs/cloud-portability.md) · [Specification](SPEC.md) · [Implementation plan](PLAN.md) · [Progress and acceptance](PROGRESS.md)
 

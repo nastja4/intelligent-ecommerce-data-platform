@@ -13,6 +13,15 @@ ROOT = Path(__file__).resolve().parent.parent
 LEDGER_PATH = ROOT / "data" / "ai-usage.sqlite3"
 
 
+def usage_path_from_env() -> Path:
+    path = os.environ.get("AI_USAGE_PATH")
+    if path is None:
+        return LEDGER_PATH
+    if not path.strip() or not Path(path).is_absolute():
+        raise ValueError("AI_USAGE_PATH must be an absolute file path.")
+    return Path(path)
+
+
 class AISettings(BaseModel):
     enabled: bool = False
     api_key: SecretStr | None = Field(default=None, repr=False)

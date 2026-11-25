@@ -262,3 +262,9 @@ Phase 7 follows the optional React dashboard increment and leaves the published 
 | 4 | FR-15 · AC-15/16 | Document assumptions and remaining checks. Run the full local verification suite. Record live access as pending separate owner approval. Production Docker and hosted CI/CD updates belong to a later phase. |
 
 Verification uses a unique project-local pytest base directory with the cache provider disabled on Windows. Run the existing frontend typecheck, test and build commands. A clean fixture refresh covers dbt and feeds native MCP. No automated tests use Anthropic credentials or call its servers.
+
+## Phase 8 · Production full-stack Docker
+
+1. **FR-16 → AC-17.** Pin the frontend build image. Install via the frontend lock, typecheck, build, and copy only `dist` into the Python runtime. Add explicit static routes, preserving native operation and the API route contract. Verify with pytest, frontend commands and a local image build.
+2. **FR-17 → AC-18/19.** Add localhost-only Compose serving and explicit maintenance, dedicated bridge checks and separate named volumes. Preserve the budget ledger on restart and replacement. Check fixture refresh, mount modes, non-root permissions, ledger persistence, default-disabled chat, trusted-origin rejection and build-context exclusions.
+3. **FR-16/17 → AC-17/18/19.** Verify the compiled dashboard in Edge on one origin. Run the complete Python suite with the provider mocked, including inside Docker with networking disabled. Document runtime-only AI configuration and non-overwriting ledger migration. Defer workflow edits, publication and cloud deployment.

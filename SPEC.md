@@ -390,3 +390,16 @@ The completed backend MVP and AC-01 through AC-12 retain their original scope. T
 | AC-14 | Chat is local-only and disabled by default. Invalid requests and failures produce sanitized responses. Token accounting, persistent reservations, concurrency and limits pass automated tests. |
 | AC-15 | React sends a bounded conversation and safely displays answers, available snapshots, MCP execution outcomes, remaining budget and clear error and disabled states. Verify in Edge with the provider mocked. |
 | AC-16 | A separately authorized live smoke test verifies first-party model access and one grounded analytical response. Record actual tokens and estimated cost. |
+
+## 13. Approved Phase 8 extension · Production full-stack image
+
+- **FR-16 · Single-origin packaging.** Build the React dashboard with pinned Node and `npm ci`. Run TypeScript checks and copy only the compiled dashboard into the non-root, hash-locked Python image. FastAPI serves the dashboard, assets, favicon, REST and documentation together. Native development still supports optional assets and the Vite proxy. Preserve the existing endpoint contracts and JSON API 404s.
+- **FR-17 · Local container operation.** Publish only on host IPv4 loopback. Keep AI disabled by default, use runtime-only credentials, require a trusted bridge peer and same-origin browser metadata for paid chat, and preserve native access checks. Keep the validated warehouse readable through a read-only serving volume and use a separate persistent writable usage volume. Refresh remains an explicit maintenance operation with readers stopped. Supply a ledger migration procedure that retains the original and refuses to overwrite an existing destination.
+
+| ID | Phase 8 acceptance criterion |
+| --- | --- |
+| AC-17 | A single non-root image serves the dashboard, compiled assets, favicon, existing analytics, Swagger and OpenAPI. Unknown API routes return JSON 404. Verify frontend traffic in Edge through the single published origin. |
+| AC-18 | Explicit fixture refresh succeeds with dbt validation. Read-only warehouse and writable ledger volumes retain their state across container replacement. |
+| AC-19 | AI defaults to disabled, the production chat boundary rejects an untrusted peer or origin, mocked enabled flows pass without paid requests, and the runtime image excludes local secrets and generated state. |
+
+The previous MVP and Phase 7 acceptance evidence remains applicable. Hosted full-stack CI/CD and publication require a later approved increment.

@@ -35,3 +35,37 @@ At short context, input costs USD 0.10 per million tokens and output costs USD 0
 Simulated gross cart value uses cart-line price times quantity before discounts. Currency, historical sales, profit, and customer behavior are unavailable. Stock alerts do not establish lost sales or inventory reservations. Tool-based grounding and prompt guidance reduce errors, but users should verify consequential answers against the source dashboard. A restart or browser reload loses the local conversation. If the warehouse is replaced mid-turn, tools may see different snapshots and the response cannot report a single common snapshot.
 
 Tests use the official SDK with a mocked HTTP transport and a real local MCP subprocess against a fixture warehouse. A separately approved live smoke test should ask only for current KPIs with one tool round and a reduced output cap. Verify the tool result against REST, inspect usage and the remaining budget, and disable AI afterward. Do not repeat automatically on failure.
+
+## Migrate the native usage ledger
+
+Use the [Docker startup instructions](../README.md#docker) to build the image. Stop native FastAPI and all Docker AI containers before migrating. Keep the source database as a backup. If the destination already has an active ledger, the copy refuses to replace it. Retain that ledger and reconcile the two histories before choosing which environment to use.
+
+Run these commands from the repository root before enabling Docker AI. If native development set a custom `AI_USAGE_PATH`, select that file instead.
+
+```powershell
+$ledger = (Resolve-Path .\data\ai-usage.sqlite3).Path
+@'
+import os
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+destination = Path("/usage/ai-usage.sqlite3")
+with TemporaryDirectory(dir=destination.parent) as work:
+    candidate = Path(work) / "ledger.sqlite3"
+    with closing(sqlite3.connect("file:/migration/ledger.sqlite3?mode=ro", uri=True)) as source:
+        tables = {row[0] for row in source.execute("select name from sqlite_master where type='table'")}
+        if not {"calls", "requests"}.issubset(tables):
+            raise ValueError("The source is not an assistant usage ledger.")
+        with closing(sqlite3.connect(candidate)) as target:
+            source.backup(target)
+            if target.execute("pragma quick_check").fetchone() != ("ok",):
+                raise ValueError("Ledger integrity check failed.")
+    candidate.chmod(0o600)
+    os.link(candidate, destination)
+'@ | docker compose --env-file .env.example run --rm --no-deps -T --volume "${ledger}:/migration/ledger.sqlite3:ro" app python -
+if ($LASTEXITCODE) { throw 'Ledger migration failed' }
+```
+
+Use one assistant runtime at a time and preserve the same ledger when changing runtimes. Independent copies cannot account for each other's spending. Keep the native database closed during the backup so the mounted file includes all committed records.

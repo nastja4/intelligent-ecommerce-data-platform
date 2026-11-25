@@ -1,11 +1,13 @@
-"""Local JSON API for the published analytical snapshot."""
+"""Local JSON API and optional compiled dashboard for the published snapshot."""
 
+from pathlib import Path
 from typing import Annotated
 
 import uvicorn
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ecommerce import queries
@@ -91,6 +93,27 @@ def low_stock(
     threshold: Annotated[Threshold, Query()] = DEFAULT_THRESHOLD,
 ) -> SnapshotRows[InventoryProduct]:
     return queries.get_low_stock_products(threshold)
+
+
+def mount_dashboard(application: FastAPI, dist: Path) -> None:
+    index = dist / "index.html"
+    assets = dist / "assets"
+    favicon = dist / "favicon.svg"
+    if not index.is_file() or not assets.is_dir() or not favicon.is_file():
+        return
+
+    @application.get("/", include_in_schema=False)
+    def dashboard() -> FileResponse:
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+    @application.get("/favicon.svg", include_in_schema=False)
+    def dashboard_favicon() -> FileResponse:
+        return FileResponse(favicon, media_type="image/svg+xml")
+
+    application.mount("/assets", StaticFiles(directory=assets), name="dashboard-assets")
+
+
+mount_dashboard(app, Path(__file__).resolve().parent.parent / "frontend" / "dist")
 
 
 if __name__ == "__main__":

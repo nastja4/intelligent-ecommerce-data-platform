@@ -10,7 +10,7 @@ from anthropic import AsyncAnthropic
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from ecommerce import ai_agent, ai_api
+from ecommerce import ai_agent
 from ecommerce.ai_config import AISettings
 from ecommerce.ai_usage import BudgetExceeded, Ledger, Usage
 from ecommerce.api import app
@@ -21,7 +21,7 @@ QUESTION = "Summarize my current simulated cart activity."
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     settings = AISettings(enabled=True, api_key=SecretStr("mock-only-secret"))
-    monkeypatch.setattr(ai_api, "LEDGER_PATH", tmp_path / "usage.sqlite3")
+    monkeypatch.setenv("AI_USAGE_PATH", str(tmp_path / "usage.sqlite3"))
     monkeypatch.setattr(AISettings, "load", classmethod(lambda cls: settings))
 
     @asynccontextmanager
@@ -149,6 +149,25 @@ def test_config_runtime_defaults_without_reading_local_file(monkeypatch):
     monkeypatch.delenv("AI_ENABLED", raising=False)
     monkeypatch.setattr(ai_config, "dotenv_values", lambda *_args, **_kwargs: {})
     assert AISettings.load().enabled is False
+
+
+def test_docker_gateway_requires_same_origin(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "false")
+    monkeypatch.setenv("AI_DOCKER_TRUSTED_PEER", "172.30.80.1")
+    payload = {"question": QUESTION}
+    headers = {"origin": "http://127.0.0.1:8000", "sec-fetch-site": "same-origin"}
+    with TestClient(app, base_url="http://127.0.0.1:8000", client=("172.30.80.1", 43210)) as bridge:
+        assert bridge.get("/api/v1/chat/status").json()["availability"] == "disabled"
+        assert bridge.post("/api/v1/chat", json=payload, headers=headers).status_code == 503
+        assert bridge.post("/api/v1/chat", json=payload).status_code == 403
+        for invalid in (
+            {"origin": "http://127.0.0.1:5173"}, {"sec-fetch-site": "same-site"},
+            {"host": "external.example"},
+        ):
+            assert bridge.post("/api/v1/chat", json=payload, headers=headers | invalid).status_code == 403
+
+    with TestClient(app, base_url="http://127.0.0.1:8000", client=("172.30.80.3", 43210)) as sibling:
+        assert sibling.get("/api/v1/chat/status", headers={"x-forwarded-for": "127.0.0.1"}).status_code == 403
 
 
 def test_short_and_long_context_costs():
