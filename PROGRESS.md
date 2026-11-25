@@ -91,3 +91,13 @@ Built `ecommerce-fullstack:local` for Linux amd64. Docker reported 525,419,167 b
 | AC-19 | The running image reported disabled chat and safely rejected a correctly formed disabled request, a foreign origin, and a sibling container spoofing a forwarded address. The image filesystem and bundle checks found no local environment files, generated databases, credentials, frontend source maps, Node, or node_modules. The network-disabled Linux suite verified enabled chat with a mocked Anthropic transport and genuine fixture MCP. |
 
 All 77 Python tests passed on Windows and Linux. Frontend typecheck, all 8 tests, and production build passed. The documented SQLite backup code preserved a synthetic balance when migrating to a new Docker volume. No real AI requests were made in this phase. Test containers were removed after verification and named volumes were retained. Hosted full-stack CI/CD and publication remain pending.
+
+## Phase 9 · Full-stack CI/CD
+
+- The workflow preserves the Windows/Ubuntu Python matrix, adds a pinned frontend job, and gates one full-stack image build on both. Publication still requires an approved main SHA and reloads the tested archive. The release verifies the archive checksum, image ID and source revision.
+- Local actionlint 1.7.12, the locked Windows Python check, all 77 Windows tests, the frontend typecheck, all 8 frontend tests, and the frontend build passed. A fixture dbt build in the production image passed all 93 nodes, including 83 data tests, with zero warnings, errors or skips.
+- All 77 tests passed in the production Linux image with networking disabled and temporary files on tmpfs. An earlier run on the container's writable layer encountered a SQLite lock during the concurrent ledger test. The rerun used the workflow's tmpfs settings and the same assertions.
+- The production Compose smoke script passed from Windows and Linux PowerShell using alternate loopback ports and separate bridges. It exercised the same image before and after container replacement and left no test containers, networks or volumes. The original app on port 8000 remained running. A deliberate verification of the failed-overlap project confirmed its temporary resources were also removed.
+- The local image artifact rehearsal verified checksum, save/load identity and the expected source revision. The real environment file was untouched. Tests used synthetic data and mocked Anthropic responses.
+
+**AC-20** remains pending a hosted run. **AC-21** remains pending owner approval, hosted publication and independent verification of the registry digest. The published backend MVP evidence above is unchanged.

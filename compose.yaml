@@ -1,12 +1,12 @@
 services:
   app:
-    image: ecommerce-fullstack:local
+    image: "${ECOMMERCE_IMAGE:-ecommerce-fullstack:local}"
     build: .
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${ECOMMERCE_PORT:-8000}:8000"
     environment:
       AI_ENABLED: "false"
-      AI_DOCKER_TRUSTED_PEER: "172.30.80.1"
+      AI_DOCKER_TRUSTED_PEER: "${ECOMMERCE_GATEWAY:-172.30.80.1}"
     volumes:
       - warehouse:/data:ro
       - usage:/usage
@@ -14,7 +14,7 @@ services:
       - application
 
   refresh:
-    image: ecommerce-fullstack:local
+    image: "${ECOMMERCE_IMAGE:-ecommerce-fullstack:local}"
     profiles: ["maintenance"]
     command: ["python", "-m", "ecommerce.refresh", "--fixture-dir", "tests/fixtures"]
     volumes:
@@ -29,5 +29,5 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.30.80.0/24
-          gateway: 172.30.80.1
+        - subnet: "${ECOMMERCE_SUBNET:-172.30.80.0/24}"
+          gateway: "${ECOMMERCE_GATEWAY:-172.30.80.1}"

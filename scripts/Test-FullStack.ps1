@@ -1,12 +1,52 @@
 param(
-    [string]$Project = ('ecommerce-phase8-' + [guid]::NewGuid().ToString('N').Substring(0, 8)),
-    [switch]$KeepRunning
+    [ValidatePattern('^[a-z0-9][a-z0-9_-]*$')]
+    [string]$Project = ('ecommerce-smoke-' + [guid]::NewGuid().ToString('N')),
+    [string]$Image = 'ecommerce-fullstack:local',
+    [ValidateRange(1, 65535)]
+    [int]$Port = 8000,
+    [ValidatePattern('^172\.(1[6-9]|2[0-9]|3[01])\.(0|[1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]|25[0-5])$')]
+    [string]$SubnetPrefix = '172.30.80',
+    [switch]$KeepRunning,
+    [switch]$CleanupVolumes,
+    [string]$CleanupMarker
 )
 
 $ErrorActionPreference = 'Stop'
 $compose = @('--project-name', $Project, '--env-file', '.env.example')
-$base = 'http://127.0.0.1:8000'
+$base = "http://127.0.0.1:$Port"
+$chatOrigin = 'http://127.0.0.1:8000'
+# Use the production Host and Origin even when a local test needs an alternate socket.
+$chatHost = @{ Host = '127.0.0.1:8000' }
 $succeeded = $false
+
+if ($KeepRunning -and $CleanupVolumes) { throw 'Choose either KeepRunning or CleanupVolumes.' }
+if ($CleanupMarker -and -not $CleanupVolumes) { throw 'CleanupMarker requires CleanupVolumes.' }
+
+# Refuse to reuse a project or its volumes, including unlabeled volume name collisions.
+$projectLabel = "label=com.docker.compose.project=$Project"
+$helperLabel = "label=ecommerce.smoke.project=$Project"
+$existing = @(docker ps -aq --filter $projectLabel)
+if ($LASTEXITCODE -ne 0) { throw 'Could not list Compose containers.' }
+$existing += @(docker ps -aq --filter $helperLabel)
+if ($LASTEXITCODE -ne 0) { throw 'Could not list smoke-test helpers.' }
+$existing += @(docker network ls -q --filter $projectLabel)
+if ($LASTEXITCODE -ne 0) { throw 'Could not list Compose networks.' }
+$volumes = @(docker volume ls -q)
+if ($LASTEXITCODE -ne 0) { throw 'Could not list Docker volumes.' }
+if ($existing.Count -or "${Project}_warehouse" -in $volumes -or "${Project}_usage" -in $volumes) {
+    throw "Smoke test requires a fresh Compose project: $Project."
+}
+$imageId = docker image inspect --format '{{.Id}}' $Image
+if ($LASTEXITCODE -ne 0) { throw "Smoke test requires a locally built image: $Image." }
+if ($CleanupMarker) { Set-Content -LiteralPath $CleanupMarker -Value $Project }
+$previousImage = $env:ECOMMERCE_IMAGE
+$previousPort = $env:ECOMMERCE_PORT
+$previousSubnet = $env:ECOMMERCE_SUBNET
+$previousGateway = $env:ECOMMERCE_GATEWAY
+$env:ECOMMERCE_IMAGE = $Image
+$env:ECOMMERCE_PORT = "$Port"
+$env:ECOMMERCE_SUBNET = "$SubnetPrefix.0/24"
+$env:ECOMMERCE_GATEWAY = "$SubnetPrefix.1"
 
 function Invoke-Compose {
     docker compose @compose @args
@@ -55,10 +95,10 @@ assert set(dist.parent.iterdir()) == {dist}
 for path in (dist / "assets").iterdir():
     assert not re.search(rb"sk-ant-[a-zA-Z0-9_-]{20,}", path.read_bytes())
 print("Verified clean image filesystem and compiled-only frontend.")
-'@ | docker run --rm --interactive --network none ecommerce-fullstack:local python -
+'@ | docker run --rm --interactive --label "ecommerce.smoke.project=$Project" --network none $Image python -
     if ($LASTEXITCODE -ne 0) { throw 'Image content check failed.' }
-    Invoke-Compose run --rm --no-deps refresh
-    Invoke-Compose up --detach --no-build app
+    Invoke-Compose run --rm --no-deps --pull never refresh
+    Invoke-Compose up --detach --no-build --pull never app
     Wait-ForApi
 
     $dashboardResponse = Invoke-WebRequest "$base/" -UseBasicParsing
@@ -82,15 +122,16 @@ print("Verified clean image filesystem and compiled-only frontend.")
     try { Invoke-RestMethod "$base/api/v1/unknown" | Out-Null } catch {
         if ($_.ErrorDetails.Message -notmatch '"detail"\s*:\s*"Not Found"') { throw 'The API 404 was not JSON.' }
     }
-    if ((Invoke-RestMethod "$base/api/v1/chat/status").availability -ne 'disabled') { throw 'AI must be disabled.' }
-    $post = @{ Method = 'Post'; ContentType = 'application/json'; Body = '{"question":"Fixture KPI check"}' }
+    if ((Invoke-RestMethod "$base/api/v1/chat/status" -Headers $chatHost).availability -ne 'disabled') { throw 'AI must be disabled.' }
+    $post = @{ Method = 'Post'; ContentType = 'application/json'; Body = '{"question":"Fixture KPI check"}'; Headers = $chatHost }
     Assert-Status 403 '/api/v1/chat' $post
-    $post.Headers = @{ Origin = $base; 'Sec-Fetch-Site' = 'same-origin' }
+    $post.Headers = $chatHost + @{ Origin = $chatOrigin; 'Sec-Fetch-Site' = 'same-origin' }
     Assert-Status 503 '/api/v1/chat' $post
     $post.Headers.Origin = 'http://127.0.0.1:5173'
     Assert-Status 403 '/api/v1/chat' $post
 
     $container = Invoke-Compose ps -q app
+    if ((docker inspect --format '{{.Image}}' $container) -ne $imageId) { throw 'Unexpected serving image.' }
     $mounts = docker inspect --format '{{json .Mounts}}' $container | ConvertFrom-Json
     if (($mounts | Where-Object Destination -eq '/data').RW -ne $false -or
         ($mounts | Where-Object Destination -eq '/usage').RW -ne $true) { throw 'Invalid runtime mount modes.' }
@@ -130,15 +171,17 @@ except urllib.error.HTTPError as error:
 else:
     raise AssertionError("A sibling container reached chat")
 print("Verified sibling and spoofed forwarded address rejection.")
-'@ | docker run --rm --interactive --network "${Project}_application" ecommerce-fullstack:local python -
+'@ | docker run --rm --interactive --label "ecommerce.smoke.project=$Project" --network "${Project}_application" $Image python -
     if ($LASTEXITCODE -ne 0) { throw 'Bridge boundary check failed.' }
 
     Invoke-Compose restart app
     Wait-ForApi
     if ((Invoke-Compose ps -q app) -ne $container) { throw 'Restart unexpectedly replaced the container.' }
-    Invoke-Compose up --detach --no-build --force-recreate app
+    Invoke-Compose up --detach --no-build --pull never --force-recreate app
     Wait-ForApi
-    if ((Invoke-Compose ps -q app) -eq $container) { throw 'Expected a replacement container.' }
+    $replacement = Invoke-Compose ps -q app
+    if ($replacement -eq $container) { throw 'Expected a replacement container.' }
+    if ((docker inspect --format '{{.Image}}' $replacement) -ne $imageId) { throw 'Unexpected replacement image.' }
     if ((Invoke-RestMethod "$base/api/v1/kpis").snapshot_at -ne $kpis.snapshot_at) { throw 'Snapshot did not persist.' }
     @'
 from decimal import Decimal
@@ -151,6 +194,28 @@ print("Verified the fixture snapshot and synthetic usage after replacement.")
     if ($LASTEXITCODE -ne 0) { throw 'Ledger persistence check failed.' }
     $succeeded = $true
 } finally {
-    if (-not ($KeepRunning -and $succeeded)) { Invoke-Compose down }
-    Write-Output "Verification project: $Project. Named volumes were retained."
+    try {
+        if (-not ($KeepRunning -and $succeeded)) {
+            try {
+                $helpers = @(docker ps -aq --filter $helperLabel)
+                if ($LASTEXITCODE -ne 0) { throw 'Could not list smoke-test helpers for cleanup.' }
+                if ($helpers.Count) {
+                    docker rm -f @helpers
+                    if ($LASTEXITCODE -ne 0) { throw 'Could not remove smoke-test helpers.' }
+                }
+            } finally {
+                if ($CleanupVolumes) {
+                    Invoke-Compose down --volumes --remove-orphans
+                } else {
+                    Invoke-Compose down --remove-orphans
+                }
+            }
+        }
+        Write-Output "Verification project: $Project. Temporary volume cleanup: $CleanupVolumes."
+    } finally {
+        $env:ECOMMERCE_IMAGE = $previousImage
+        $env:ECOMMERCE_PORT = $previousPort
+        $env:ECOMMERCE_SUBNET = $previousSubnet
+        $env:ECOMMERCE_GATEWAY = $previousGateway
+    }
 }

@@ -403,3 +403,13 @@ The completed backend MVP and AC-01 through AC-12 retain their original scope. T
 | AC-19 | AI defaults to disabled, the production chat boundary rejects an untrusted peer or origin, mocked enabled flows pass without paid requests, and the runtime image excludes local secrets and generated state. |
 
 The previous MVP and Phase 7 acceptance evidence remains applicable. Hosted full-stack CI/CD and publication require a later approved increment.
+
+## 14. Approved Phase 9 extension · Full-stack CI/CD
+
+- **FR-18 · Full-stack validation.** Pull requests and main pushes run fixture dbt and hash-locked Python tests on Windows and Linux, plus an independent lockfile-based Node build and frontend tests. A dependent job builds the production image once, tests it with container networking disabled for pytest, and verifies serving and persistence using temporary Compose resources. Clean up those resources after failure or success. Automated AI tests use mocked Anthropic responses and no real credentials.
+- **FR-19 · Exact-image delivery.** Only successful main pushes with `GHCR_APPROVED_SHA` matching the workflow commit may publish. Transfer only the validated image archive, its checksum and image ID. Verify the archive, reloaded image ID and revision before pushing the same image to a commit-SHA tag. Only the publish job may write packages. Exclude secrets, warehouses and usage ledgers from every release artifact.
+
+| ID | Phase 9 acceptance criterion |
+| --- | --- |
+| AC-20 | The full-stack workflow passes for the reviewed commit on GitHub. Local workflow lint and fixture smoke runs establish reproducibility but do not establish hosted success. |
+| AC-21 | An owner-approved main push publishes the exact validated full-stack image and a registry pull matches the reported digest. An unapproved SHA does not publish. |

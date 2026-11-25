@@ -106,7 +106,7 @@ Invoke-RestMethod "$base/api/v1/chat/status"
 (Invoke-WebRequest "$base/docs" -UseBasicParsing).StatusCode
 ```
 
-Stop any native FastAPI process on port 8000 before starting Docker. The published host port binds only to `127.0.0.1`. Use that address for containerized chat. Compose places the app on a dedicated bridge and the chat routes verify its gateway, host, and browser origin. Keep this service local and the bridge dedicated to this application. If `172.30.80.0/24` conflicts with a local network, choose an unused private subnet and update both the gateway and trusted peer in `compose.yaml`. [Docker port binding](https://docs.docker.com/engine/network/port-publishing/)
+Stop any native FastAPI process on port 8000 before starting Docker. The published host port binds only to `127.0.0.1`. Use that address for containerized chat. Compose places the app on a dedicated bridge and the chat routes verify its gateway, host, and browser origin. Keep this service local and the bridge dedicated to this application. If `172.30.80.0/24` conflicts with a local network, set `ECOMMERCE_SUBNET` to an unused private subnet and `ECOMMERCE_GATEWAY` to its gateway address. [Docker port binding](https://docs.docker.com/engine/network/port-publishing/)
 
 The warehouse volume is writable only for maintenance. The separate usage volume stays writable while serving. Both named volumes survive stop, restart, replacement and `down`. Keep the same Compose project name and avoid `down --volumes`. Stop all readers before refresh.
 
@@ -141,6 +141,8 @@ Use `docker stop ecommerce-ai-local` and `docker start ecommerce-ai-local` to re
 
 ## Verification and CI/CD
 
+The following table records the original backend MVP verification. See [Phase 9 evidence](PROGRESS.md#phase-9--full-stack-cicd) for the full-stack pipeline.
+
 | Check | Observed result |
 | --- | --- |
 | Full Python suite | 66 passed on Windows and 66 passed in the Linux x86-64 image with networking disabled |
@@ -160,19 +162,54 @@ $testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
 To repeat the image checks:
 
 ```powershell
-& .\scripts\Test-DockerImage.ps1 -Image ecommerce-mvp:local
-docker run --rm --network none ecommerce-mvp:local python -m pytest -q --basetemp /tmp/pytest-ecommerce -p no:cacheprovider
+docker compose --env-file .env.example build app
+docker run --rm --network none --tmpfs /tmp:rw,nosuid,nodev,mode=1777 ecommerce-fullstack:local python -m pytest -q --basetemp /tmp/pytest-ecommerce -p no:cacheprovider
+& .\scripts\Test-FullStack.ps1 -Image ecommerce-fullstack:local -CleanupVolumes
+# If needed, add -Port 18080 and -SubnetPrefix 172.29.90 to isolate the test.
 ```
 
-[GitHub Actions](.github/workflows/ci.yml) is configured for pull requests and pushes to `main`. A Windows/Ubuntu matrix installs from the lock and runs fixture-backed dbt and pytest. A separate Ubuntu job builds and smoke-tests the image. On a main push, the publish job requires all checks and an owner-approved commit SHA. It reloads the tested image, verifies its image ID, and uses a job-scoped `GITHUB_TOKEN` to publish to the lowercase GHCR repository path with the commit SHA tag.
+### Full-stack workflow
 
-For an approved destination and reviewed commit, set the repository Actions variable `GHCR_APPROVED_SHA` to the exact commit before the authorized main push. Use the GitHub web UI or `gh variable set GHCR_APPROVED_SHA --repo OWNER/REPO --body COMMIT_SHA`. After the workflow succeeds, compare the digest in the publish job summary with the pull result. Private pulls require registry authentication with package read access. [Publication checklist and open acceptance criteria](PROGRESS.md)
+[GitHub Actions](.github/workflows/ci.yml) validates pull requests and pushes to `main`.
+
+1. The Windows/Ubuntu Python 3.12 matrix verifies the hash lock, runs `pip check`, loads fixtures, and runs dbt and pytest. The separate Ubuntu frontend job uses Node 22.16.0, `npm ci`, typechecking, tests, and a production build. Its npm download cache is keyed by `frontend/package-lock.json`.
+2. After both jobs succeed, the container job builds and labels the image once, runs pytest with container networking disabled, and runs the Compose smoke test on that same image. The smoke test uses `.env.example` and a new project with temporary synthetic volumes. Cleanup runs after failures. Fixtures and usage are written to temporary volumes and are excluded from artifacts.
+3. Passing main pushes save the tested image archive, checksum, and image ID for three days. Publication requires an exact match between `GHCR_APPROVED_SHA` and the main push SHA. The publish job checks the checksum, loads the artifact, and verifies the image ID and source revision label before pushing the same image to the lowercase repository path. Only this job has package write permission.
+
+AI is disabled in the workflow and Compose. Enabled-behavior tests replace the Anthropic transport with deterministic mocks, so the workflow needs no API key or credits.
+
+### Owner-approved release
+
+1. Push the reviewed feature branch and open a PR. Confirm the Python, frontend and production image jobs pass.
+2. Obtain approval for the exact main commit and package destination. If repository rules allow an owner to push the merge, fetch main and create the reviewed merge locally. Set the Actions repository variable to the resulting full SHA **before** pushing main. Use **Settings → Secrets and variables → Actions → Variables**, or the GitHub CLI command below. A different merge or squash SHA requires a fresh approval.
 
 ```powershell
-$image = 'ghcr.io/owner/repo:COMMIT_SHA'
-docker pull $image
-docker image inspect --format '{{json .RepoDigests}}' $image
+# Owner only, after review and authorization. Use a clean working tree.
+git fetch origin
+git switch main
+git pull --ff-only origin main
+git merge --no-ff feature/ai-assistant
+$releaseSha = (git rev-parse HEAD).Trim()
+gh variable set GHCR_APPROVED_SHA --repo OWNER/REPO --body $releaseSha
+git push origin main
 ```
+
+3. Open the main push run in **Actions** and confirm it used the approved SHA. Check the published digest in the publish job summary and independently pull the SHA tag. If branch rules require GitHub to create the merge, verify the actual main SHA after merging and use the rerun controls for that exact main push after recording approval. Confirm that the rerun evaluates the gate and finishes before treating it as a release. Private pulls require registry authentication with package read access. [GitHub workflow reruns](https://docs.github.com/en/actions/managing-workflow-runs/re-running-workflows-and-jobs)
+
+```powershell
+$env:ECOMMERCE_IMAGE = 'ghcr.io/owner/repo:COMMIT_SHA'
+docker pull $env:ECOMMERCE_IMAGE
+docker image inspect --format '{{json .RepoDigests}}' $env:ECOMMERCE_IMAGE
+# Initialize once in an isolated release project. This replaces that project's warehouse.
+docker compose --project-name ecommerce-release --env-file .env.example run --rm --no-deps --pull never refresh
+docker compose --project-name ecommerce-release --env-file .env.example up --detach --no-build --pull never app
+Start-Process 'http://127.0.0.1:8000'
+# When finished, stop the service and retain both volumes.
+docker compose --project-name ecommerce-release --env-file .env.example down
+Remove-Item Env:ECOMMERCE_IMAGE
+```
+
+Keep port 8000 free and stop other instances of the Compose stack before starting the release project. On subsequent runs, skip initialization to retain the existing snapshot.
 
 ## Known limitations
 
