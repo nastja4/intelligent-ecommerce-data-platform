@@ -25,3 +25,6 @@ test = ["pytest"]
 
 [tool.setuptools]
 packages = ["ecommerce"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

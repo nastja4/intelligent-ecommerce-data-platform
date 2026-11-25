@@ -2,7 +2,7 @@
 
 This portfolio project will load synthetic DummyJSON data into DuckDB, transform and validate it with dbt, and expose cart analytics through FastAPI and MCP. Cart values represent simulated activity.
 
-The current pipeline loads products, users, and carts into DuckDB Bronze and builds the Silver staging views and Gold marts with dbt. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
+The current pipeline loads products, users, and carts into DuckDB Bronze, builds the Silver views and Gold tables with dbt, and publishes the warehouse after validation. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
 
 ## Development setup
 
@@ -74,7 +74,25 @@ $testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
 
 Fixture files contain arrays of recorded response pages with `total`, `skip`, `limit` and the corresponding collection. Both modes validate page metadata and record IDs. Live requests advance `skip` by the number of rows returned and retry transient transport errors, HTTP 429, and HTTP 5xx. The loader stages all three collections, collapses identical payloads by ID, and rejects conflicting payloads before writing.
 
-Each table stores `source_id`, the complete JSON `payload`, and an `ingested_at` UTC instant. One transaction replaces all three sets of rows, removing IDs absent from the new snapshot. A failed insert rolls the transaction back. A rerun preserves the logical rows and records the new ingestion time. The Bronze-only CLI works directly on the selected warehouse. The validated candidate publication workflow belongs to Phase 2.
+Each table stores `source_id`, the complete JSON `payload`, and an `ingested_at` UTC instant. One transaction replaces all three sets of rows, removing IDs absent from the new snapshot. A failed insert rolls the transaction back. A rerun preserves the logical rows and records the new ingestion time. Use the Bronze-only command for disposable warehouses and the validated refresh below for the active warehouse.
+
+## Validated warehouse refresh
+
+Run from the repository root in PowerShell. **Stop all DuckDB readers and writers before replacement**, including interactive DuckDB sessions, application processes, and any containers sharing the warehouse. Run one refresh at a time.
+
+```powershell
+$py = (Resolve-Path .\.venv\Scripts\python.exe).Path
+$env:WAREHOUSE_PATH = Join-Path (Get-Location).Path 'data/warehouse.duckdb'
+& $py -m ecommerce.refresh --fixture-dir tests/fixtures
+
+# Run the live smoke test against its own warehouse.
+$env:WAREHOUSE_PATH = Join-Path (Get-Location).Path 'data/live-smoke.duckdb'
+& $py -m ecommerce.refresh --live
+```
+
+The command loads a sibling candidate file, closes the Bronze writer, and runs `dbt build` in a subprocess using the same Python interpreter. Only the subprocess receives the candidate as `WAREHOUSE_PATH`. When dbt succeeds, the refresh checks the names and types of the expected Bronze, Silver, and Gold relations, closes the verification connection, and replaces the destination file with `os.replace`. An existing WAL blocks replacement so the warehouse can be recovered first.
+
+Exit code `0` means publication succeeded, `1` means the refresh failed, and `2` indicates invalid command arguments. A failed refresh leaves the prior warehouse intact and cleans up its candidate and sidecars. Output includes candidate row counts and, if dbt validation fails, failed dbt node names and counts without source payloads or raw dbt errors. Use the disposable fixture build below to generate dbt documentation.
 
 ## Silver staging
 
