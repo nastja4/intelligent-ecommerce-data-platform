@@ -249,3 +249,16 @@ Write all project documentation in English. The README covers prerequisites, cle
 **Optional after all gates** includes incremental dbt models, scheduled ingestion, a dashboard and an actual cloud warehouse migration. Streaming, production infrastructure, production auth, distributed processing, production orchestration, historical tracking, LLM training and production deployment are outside MVP scope.
 
 Before signing off implementation, review code and SQL against the traced requirements, confirm error paths and documentation, record acceptance evidence, and obtain explicit approval before any commit or push. Track missing external evidence against its acceptance ID and owner.
+
+## Phase 7 · Integrated AI Business Assistant
+
+Phase 7 follows the optional React dashboard increment and leaves the published MVP unchanged. Runtime scope is native localhost.
+
+| Order | Requirements and acceptance | Deliverable and verification |
+| --- | --- | --- |
+| 1 | FR-14 · AC-14 | Review the interrupted dependency change, validate the hash lock and add backend-only settings and ignored SQLite usage storage. Verify configuration, pricing tiers, atomic reservations and rate limits with pytest. |
+| 2 | FR-13/14 · AC-13/14 | Discover the five existing MCP stdio tools using the packaged interpreter and canonical warehouse path. Validate tool arguments and results, replay tool and thinking blocks, and reserve each bounded Messages call. Exercise fixture responses through a real local MCP session with the Messages transport mocked. |
+| 3 | FR-14/15 · AC-14/15 | Add localhost chat routes and an accessible React assistant inside the existing dashboard shell. Test existing analytics, compile TypeScript and verify disabled, pending, success and error states in Edge. |
+| 4 | FR-15 · AC-15/16 | Document assumptions and remaining checks. Run the full local verification suite. Record live access as pending separate owner approval. Production Docker and hosted CI/CD updates belong to a later phase. |
+
+Verification uses a unique project-local pytest base directory with the cache provider disabled on Windows. Run the existing frontend typecheck, test and build commands. A clean fixture refresh covers dbt and feeds native MCP. No automated tests use Anthropic credentials or call its servers.

@@ -18,6 +18,8 @@ dependencies = [
     "uvicorn",
     "mcp>=2,<3",
     "pydantic",
+    "anthropic>=1,<2",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]

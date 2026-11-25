@@ -9,6 +9,7 @@ import { DataTable } from './components/DataTable';
 import { Metrics } from './components/Metrics';
 import { NumberFilter } from './components/NumberFilter';
 import { ResultState } from './components/ResultState';
+import { Assistant } from './components/Assistant';
 
 const navigation = [
   { target: 'overview', symbol: '▦', label: 'Overview' },
@@ -36,6 +37,8 @@ function Panel({ id, title, description, action, children }: {
 export function App() {
   const [revision, reload] = useState(0);
   const [active, setActive] = useState('overview');
+  const [assistantOpened, openAssistant] = useState(false);
+  const showingAssistant = active === 'assistant';
   const [productLimit, setProductLimit] = useState(rankingBounds.initial);
   const [customerLimit, setCustomerLimit] = useState(rankingBounds.initial);
   const [threshold, setThreshold] = useState(stockBounds.initial);
@@ -45,7 +48,11 @@ export function App() {
   const products = useResource(useCallback(signal => api.products(productLimit, signal), [productLimit]), revision);
   const customers = useResource(useCallback(signal => api.customers(customerLimit, signal), [customerLimit]), revision);
   const inventory = useResource(useCallback(signal => api.inventory(threshold, signal), [threshold]), revision);
-  const busy = [health, kpis, categories, products, customers, inventory].some(item => item.status === 'loading');
+  const timestamp = kpis.status === 'ready' ? kpis.data.snapshot_at : undefined;
+  const snapshotLabel = kpis.status === 'loading' ? 'Loading…'
+    : kpis.status === 'error' && kpis.error.kind !== 'warehouse' ? 'Could not load'
+    : timestamp && !Number.isFinite(Date.parse(timestamp)) ? 'Invalid timestamp'
+    : 'Unavailable';
   const statusText = health.status === 'loading' ? 'Checking connection' :
     health.status === 'ready' ? 'API connected · Warehouse ready' :
     health.error.kind === 'warehouse' ? 'API connected · Warehouse unavailable' :
@@ -64,6 +71,10 @@ export function App() {
           onClick={() => setActive(item.target)}>
           <span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}
         </a>)}
+        <a href="#assistant" aria-current={showingAssistant ? 'page' : undefined}
+          onClick={() => { openAssistant(true); setActive('assistant'); }}>
+          <span className="nav-symbol" aria-hidden="true">✦</span>AI Assistant
+        </a>
       </nav>
       <a className="docs-link" href={swaggerPath} target="_blank" rel="noreferrer">
         <span aria-hidden="true">↗</span> Swagger documentation
@@ -81,23 +92,29 @@ export function App() {
         <header className="page-header">
           <div className="page-header-inner">
             <div className="overview-heading">
-              <h1 id="overview-title">Business overview</h1>
+              <h1 id="overview-title">{showingAssistant ? 'AI Assistant' : 'Business overview'}</h1>
               <button className="button reload" type="button" onClick={() => reload(value => value + 1)}>
                 <span aria-hidden="true">↻</span> Reload dashboard
               </button>
             </div>
-            <p className="overview-description">Explore simulated cart activity and inventory in the current validated snapshot.</p>
+            <p className="overview-description">{showingAssistant
+              ? 'Ask about simulated cart activity and inventory. Questions and relevant analytical results are sent to Anthropic.'
+              : 'Explore simulated cart activity and inventory in the current validated snapshot.'}</p>
             <div className="snapshot" aria-live="polite">
               <span className="snapshot-dot" aria-hidden="true" />
               <span>Snapshot</span>
-              {kpis.status === 'ready'
-                ? <time dateTime={kpis.data.snapshot_at}>{formatSnapshot(kpis.data.snapshot_at)}</time>
-                : <span>{busy ? 'Loading…' : 'Unavailable'}</span>}
+              {timestamp && Number.isFinite(Date.parse(timestamp))
+                ? <time dateTime={timestamp}>{formatSnapshot(timestamp)}</time>
+                : <span>{snapshotLabel}</span>}
             </div>
           </div>
         </header>
-        <div id="main-content" className="dashboard-scroll" role="region" aria-label="Dashboard analytics" tabIndex={0}>
-          <div className="dashboard-content">
+        <div id="main-content" className="dashboard-scroll" role="region"
+          aria-label={showingAssistant ? 'AI Assistant' : 'Dashboard analytics'} tabIndex={0}>
+          {assistantOpened && <section id="assistant" className="dashboard-content assistant-content" hidden={!showingAssistant}>
+            <Assistant />
+          </section>}
+          <div className="dashboard-content" hidden={showingAssistant}>
             <section id="overview" className="overview" aria-label="Overview metrics">
               <Metrics resource={kpis} />
             </section>

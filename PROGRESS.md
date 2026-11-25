@@ -62,3 +62,20 @@ $testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
 AC-12 remains open for another developer to reproduce the project from a clean checkout of the published repository.
 
 [Quick start](README.md) · [Data model](docs/data-model.md) · [Claude registration and demo](docs/demo.md) · [Cloud portability](docs/cloud-portability.md)
+
+## Phase 7 · Local AI Assistant
+
+The optional branch adds localhost chat routes, an Anthropic Messages adapter, a real MCP stdio client, a persistent SQLite usage ledger and an accessible React assistant. The published MVP and its acceptance evidence above remain in their original scope.
+
+| Criterion | Evidence |
+| --- | --- |
+| AC-13 | The official SDK's mocked Messages transport and the real MCP stdio client exercised single-tool and multi-tool requests against deterministic Gold fixtures. Checks covered allowlist enforcement, argument validation, thinking-block replay, linked tool results and iteration bounds. |
+| AC-14 | Automated checks covered local-only access, disabled and unconfigured states, budget and rate limits, concurrent reservations, restart persistence, pricing, timeout handling and sanitized errors. Git excludes the local environment and usage ledger. Docker's build-context allowlist excludes both. |
+| AC-15 | Edge 158 exercised the assistant at 1920 × 1080, 1440 × 900, 1280 × 800, 1024 × 768, 768 × 1024 and 390 × 844 using intercepted chat responses. Verified safe Markdown, snapshot state transitions, cost display, keyboard focus, collapsed MCP details and real wheel scrolling with aligned pinned headers and an accessible composer. The six analytics endpoints also passed the browser smoke check. |
+| AC-16 | Verified by the owner. Claude Haiku 5.5 authenticated successfully and the single-tool KPI question returned all four expected warehouse metrics: total gross simulated cart value, cart count, average cart value, and total item quantity. The multi-tool question successfully executed `get_top_products` (limit 20), `get_low_stock_products` (threshold 10), and `get_business_kpis`. |
+
+The owner reported USD 0.0015199 in total estimated application usage and USD 1.9984801 in remaining estimated application budget. These are local ledger estimates. Actual provider charges are reported by Anthropic.
+
+The complete Windows Python suite passed 75 tests, including fixture dbt refreshes. The frontend typecheck, eight frontend tests and production build passed. The binary dependency lock resolved with hash checks on Windows and Linux Python 3.12. The Windows download verified 84 wheels, and `pip check` found no broken requirements. Production integration and hosted verification of the assistant are deferred.
+
+[Local assistant setup and limitations](docs/ai-assistant.md)

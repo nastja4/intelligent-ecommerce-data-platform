@@ -158,3 +158,7 @@ docker image inspect --format '{{json .RepoDigests}}' $image
 [Commerce Intelligence](frontend/README.md) provides a local browser interface for the existing REST metrics, including category performance, independent ranking filters, and a low-stock threshold. It runs separately from the published backend image.
 
 [Data model and metric definitions](docs/data-model.md) · [Claude Code demo](docs/demo.md) · [Cloud portability](docs/cloud-portability.md) · [Specification](SPEC.md) · [Implementation plan](PLAN.md) · [Progress and acceptance](PROGRESS.md)
+
+## Optional local AI Assistant
+
+The dashboard's **AI Assistant** sends questions, bounded chat context and selected synthetic analytical results to Anthropic. Its agent uses Claude Haiku 5.5 and the same five MCP tools as the Claude Code demo. Read the [local assistant setup, cost controls and verification](docs/ai-assistant.md).

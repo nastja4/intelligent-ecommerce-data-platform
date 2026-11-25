@@ -375,3 +375,18 @@ A feature is complete when:
 - Documentation is updated.
 - The implementation has been reviewed.
 - Changes are committed to Git.
+
+## 12. Approved Phase 7 extension · Integrated AI Business Assistant
+
+The completed backend MVP and AC-01 through AC-12 retain their original scope. The no-paid-API requirement applies to that MVP. Phase 7 separately authorizes a native localhost assistant using the first-party Anthropic API and an estimated application budget of at most USD 2.00. Real paid requests require separate approval.
+
+- **FR-13 · Assistant and tool grounding.** The React assistant calls local FastAPI chat routes. The backend uses the official Anthropic Messages SDK with Claude Haiku 5.5 and the official MCP stdio client. The agent discovers and validates the five approved read-only analytical tools. Tool calls go through MCP to the published Gold snapshot. The agent supports multiple tools per turn, reports execution outcomes, and provides snapshot and metric context when available. It explains unavailable historical or completed sales metrics. Synthetic cart value has no verified currency and represents neither revenue nor profit. Customer results contain IDs and aggregates.
+- **FR-14 · Configuration and cost protection.** Load ignored backend-only dotenv configuration at runtime and default to disabled. Require loopback access and permitted hosts and browser origins. Never send secrets to the frontend or MCP child. Bound request rate, question and conversation length, tool results, timeouts, tool rounds, total Messages calls and model output. Disable SDK retries and prompt caching. Reserve estimated worst-case short-context cost before each call in a separate concurrency-safe persistent ledger. Retain uncertain reservations. Keep provider-side limits and prepaid credit protection independent of estimates.
+- **FR-15 · Assistant experience and verification.** Provide accessible session-only chat, suggested questions, tool details, model and budget status, clear and pending states, and sanitized errors. Keep dashboard layout and existing read-only APIs functional. Automated validation uses mock provider responses and deterministic fixture data. Production integration and publication are outside this increment.
+
+| ID | Phase 7 acceptance criterion |
+| --- | --- |
+| AC-13 | Native assistant discovers and uses approved MCP tools with deterministic fixtures in single-tool and multi-tool mocked conversations. Tool arguments, tool-use IDs and stop reasons are validated. |
+| AC-14 | Chat is local-only and disabled by default. Invalid requests and failures produce sanitized responses. Token accounting, persistent reservations, concurrency and limits pass automated tests. |
+| AC-15 | React sends a bounded conversation and safely displays answers, available snapshots, MCP execution outcomes, remaining budget and clear error and disabled states. Verify in Edge with the provider mocked. |
+| AC-16 | A separately authorized live smoke test verifies first-party model access and one grounded analytical response. Record actual tokens and estimated cost. |
