@@ -1,4 +1,4 @@
-"""Read Phase 1 ingestion settings from the environment."""
+"""Resolve warehouse and ingestion settings from the environment."""
 
 import math
 import os
@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DUMMYJSON_URL = "https://dummyjson.com"
+
+
+def warehouse_path_from_env() -> Path:
+    warehouse = os.getenv("WAREHOUSE_PATH", "data/warehouse.duckdb")
+    if not warehouse.strip():
+        raise ValueError("WAREHOUSE_PATH must be a non-empty file path.")
+    return Path(warehouse).expanduser().resolve()
 
 
 @dataclass(frozen=True)
@@ -17,10 +24,6 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        warehouse = os.getenv("WAREHOUSE_PATH", "data/warehouse.duckdb")
-        if not warehouse.strip():
-            raise ValueError("WAREHOUSE_PATH must be a non-empty file path.")
-
         try:
             timeout = float(os.getenv("DUMMYJSON_TIMEOUT_SECONDS", "10"))
         except ValueError:
@@ -29,7 +32,7 @@ class Settings:
             raise ValueError("DUMMYJSON_TIMEOUT_SECONDS must be a positive number.")
 
         return cls(
-            warehouse_path=Path(warehouse).expanduser().resolve(),
+            warehouse_path=warehouse_path_from_env(),
             timeout_seconds=timeout,
             page_size=_read_int("DUMMYJSON_PAGE_SIZE", 50, 1, 100),
             max_retries=_read_int("DUMMYJSON_MAX_RETRIES", 2, 0, 5),

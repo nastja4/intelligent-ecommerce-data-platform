@@ -2,7 +2,7 @@
 
 This portfolio project will load synthetic DummyJSON data into DuckDB, transform and validate it with dbt, and expose cart analytics through FastAPI and MCP. Cart values represent simulated activity.
 
-The current pipeline loads products, users, and carts into DuckDB Bronze, builds the Silver views and Gold tables with dbt, and publishes the warehouse after validation. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
+The pipeline loads products, users, and carts into DuckDB Bronze, builds the Silver views and Gold tables with dbt, and publishes the warehouse after validation. FastAPI and a stdio MCP server expose the current snapshot through the same read-only query services. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
 
 ## Development setup
 
@@ -166,3 +166,58 @@ $testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
 ```
 
 dbt writes the documentation and lineage artifacts under `analytics/target`. Its reconciliation test compares gross value across carts, products, categories, customers and KPIs, plus applicable quantity totals and cart counts. The Python integration tests check hand-calculated values, including empty carts and a wholly empty snapshot.
+
+## REST API
+
+Run from the repository root in PowerShell. Set `WAREHOUSE_PATH` to the validated warehouse, preferably as an absolute path. If omitted, it defaults to `data/warehouse.duckdb` relative to the process working directory. Serving requires only the warehouse file. No DummyJSON connection, Claude credentials, or separate LLM API key is required.
+
+```powershell
+$py = (Resolve-Path .\.venv\Scripts\python.exe).Path
+$env:WAREHOUSE_PATH = Join-Path (Get-Location).Path 'data/warehouse.duckdb'
+& $py -m ecommerce.api
+```
+
+Native startup binds to `127.0.0.1:8000`. Open Swagger UI at <http://127.0.0.1:8000/docs> or use the OpenAPI JSON at <http://127.0.0.1:8000/openapi.json>. In another PowerShell terminal, run these requests.
+
+```powershell
+$base = 'http://127.0.0.1:8000'
+Invoke-RestMethod "$base/health"
+Invoke-RestMethod "$base/api/v1/kpis"
+Invoke-RestMethod "$base/api/v1/products/top?limit=1" | ConvertTo-Json -Depth 5
+Invoke-RestMethod "$base/api/v1/categories" | ConvertTo-Json -Depth 5
+Invoke-RestMethod "$base/api/v1/customers/top?limit=10" | ConvertTo-Json -Depth 5
+Invoke-RestMethod "$base/api/v1/inventory/low-stock?threshold=10" | ConvertTo-Json -Depth 5
+```
+
+Ranked lists default to 10 rows and accept `limit` from 1 through 100. Inventory accepts `threshold` from 0 through 10,000, defaults to 10, and returns products with stock strictly below it. Valid requests without matches return an empty `items` list. Analytical results contain the UTC snapshot timestamp and metric basis. Money is serialized as two-decimal strings, and customer rows contain IDs and aggregate metrics only.
+
+The API returns 422 for invalid parameters, 503 for missing, uninitialized, or locked warehouses, and a sanitized 500 for unexpected errors. This local MVP has no production authentication. The snapshot supports synthetic cart activity without historical trends, completed sales, or verified currency. Stop all readers before replacing the warehouse.
+
+## MCP over stdio
+
+Use the same `WAREHOUSE_PATH` setting for the server. The installed official Python SDK is MCP 2.3.0. Start the process directly with `& $py -m ecommerce.mcp_server` when using a protocol client to manage stdin and stdout. Diagnostics go to stderr.
+
+| Tool | Arguments |
+| --- | --- |
+| `get_business_kpis` | None |
+| `get_top_products` | Optional integer `limit` |
+| `get_category_performance` | None |
+| `get_top_customers` | Optional integer `limit` |
+| `get_low_stock_products` | Optional integer `threshold` |
+
+Tools use the same schemas and ordering as REST. Unavailable warehouses produce tool errors. Tool discovery and calls can run independently of FastAPI.
+
+### Register with Claude Code
+
+From the repository root, use the existing Claude subscription and register the server in local scope for this project. Claude Code starts the stdio process itself. [Claude Code MCP registration](https://code.claude.com/docs/en/mcp)
+
+```powershell
+$py = (Resolve-Path .\.venv\Scripts\python.exe).Path
+$env:WAREHOUSE_PATH = (Resolve-Path .\data\warehouse.duckdb).Path
+claude auth status
+claude mcp add --env "WAREHOUSE_PATH=$env:WAREHOUSE_PATH" --transport stdio --scope local ecommerce -- "$py" -m ecommerce.mcp_server
+claude mcp list
+claude
+```
+
+In Claude Code, open `/mcp` and confirm that `ecommerce` is connected. Ask for the current simulated cart KPIs, top products, and low-stock alerts. Ask for last month's completed revenue to check how Claude handles a metric outside the snapshot.
