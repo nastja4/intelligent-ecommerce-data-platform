@@ -2,7 +2,7 @@
 
 A local analytics platform that turns synthetic DummyJSON shopping carts into a validated DuckDB snapshot. A retail analyst can use REST or ask Claude Code to compare products and categories, rank customers by simulated cart value, and find products below a stock threshold.
 
-**Verified locally on Windows and Linux.** Hosted CI and GHCR publication are pending. [Acceptance status](PROGRESS.md)
+**Backend MVP verified on Windows and Linux and published to GHCR.** [Acceptance status](PROGRESS.md)
 
 ## Architecture
 
@@ -151,6 +151,10 @@ docker image inspect --format '{{json .RepoDigests}}' $image
 - Refresh is a manual batch operation against a single local DuckDB file. Readers must close before publication.
 - REST is intended for local use and has no production authentication. MCP exposes predefined tools over local stdio.
 - Claude Code's phrasing and tool selection can vary. Tool results and the metric definitions are the reference for interpreting answers.
-- Hosted workflow execution, GHCR publication, and independent clean-checkout reproduction remain open.
+- Independent clean-checkout reproduction remains open.
+
+## Optional React dashboard
+
+[Commerce Intelligence](frontend/README.md) provides a local browser interface for the existing REST metrics, including category performance, independent ranking filters, and a low-stock threshold. It runs separately from the published backend image.
 
 [Data model and metric definitions](docs/data-model.md) · [Claude Code demo](docs/demo.md) · [Cloud portability](docs/cloud-portability.md) · [Specification](SPEC.md) · [Implementation plan](PLAN.md) · [Progress and acceptance](PROGRESS.md)
