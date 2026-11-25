@@ -2,7 +2,7 @@
 
 This portfolio project will load synthetic DummyJSON data into DuckDB, transform and validate it with dbt, and expose cart analytics through FastAPI and MCP. Cart values represent simulated activity.
 
-Phase 1 loads products, users, and carts into DuckDB Bronze. The first increment of Phase 2 builds and tests the Silver staging views. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
+The current pipeline loads products, users, and carts into DuckDB Bronze and builds the Silver staging views and Gold marts with dbt. [PLAN.md](PLAN.md) describes the remaining work, and [SPEC.md](SPEC.md) defines the project requirements.
 
 ## Development setup
 
@@ -89,7 +89,7 @@ $env:WAREHOUSE_PATH = Join-Path $runDir 'warehouse.duckdb'
 & $dbt build --project-dir analytics --profiles-dir analytics
 ```
 
-The dbt profile selects DuckDB, and the project materializes staging models as views in `silver`. Source declarations point to the three tables in `bronze`. The schema naming macro lets future Gold models use the exact `gold` schema name.
+The dbt profile selects DuckDB, and the project materializes staging models as views in `silver` and marts as tables in `gold`. Source declarations point to the three tables in `bronze`. The schema naming macro preserves the exact layer names.
 
 | Silver view | Grain and fields |
 | --- | --- |
@@ -123,3 +123,28 @@ with duckdb.connect(os.environ["WAREHOUSE_PATH"], read_only=True) as con:
 ```
 
 The fixture has 4 products, 3 users, 3 carts, and 3 cart items. Cart 201 has two lines for product 101 at ordinals 0 and 1. Cart 203 remains in `stg_carts` with zero item rows.
+
+## Gold business analytics
+
+The fixture build above also produces six Gold tables.
+
+| Table | Grain and calculation | Fixture rows |
+| --- | --- | ---: |
+| `cart_summary` | One row per cart. Sums gross line value and quantity, with zeroes for empty carts. | 3 |
+| `product_performance` | One row per product with cart activity. Sums gross line value and quantity and attaches the catalog title and category. | 2 |
+| `category_performance` | One row per category with cart activity. Rolls up product value and quantity. | 2 |
+| `customer_performance` | One row per customer with carts. Returns only the customer ID, gross cart value, and cart count. | 2 |
+| `inventory_alerts` | One row per catalog product, including products without cart activity. Carries stock unchanged for consumer-side threshold filtering. | 4 |
+| `business_kpis` | One snapshot row. Aggregates the cart summaries and records the snapshot timestamp. | 1 |
+
+Gross simulated cart value is the sum of the cart-line unit price times quantity before discounts. These amounts describe synthetic cart activity. Money remains decimal with two places, and average cart value uses exact decimal division with ties rounded to even. Fixture KPIs are gross value **20.00**, cart count **3**, average cart value **6.67**, and total item quantity **3**. A snapshot with no carts still returns one KPI row with zero totals and a null average. An empty cart counts and contributes zero. The snapshot timestamp is the latest ingestion instant across the source collections, with Gold build time used when all three are empty.
+
+After running the fixture build above, generate the dbt catalog and lineage and run the full Python suite.
+
+```powershell
+& $dbt docs generate --project-dir analytics --profiles-dir analytics
+$testTmp = Join-Path (Resolve-Path .\.venv).Path ("pytest-" + [guid]::NewGuid())
+& $py -m pytest -q --basetemp $testTmp -p no:cacheprovider
+```
+
+dbt writes the documentation and lineage artifacts under `analytics/target`. Its reconciliation test compares gross value across carts, products, categories, customers and KPIs, plus applicable quantity totals and cart counts. The Python integration tests check hand-calculated values, including empty carts and a wholly empty snapshot.

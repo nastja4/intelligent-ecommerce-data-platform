@@ -1,0 +1,130 @@
+version: 2
+
+models:
+  - name: cart_summary
+    description: One row per cart, including empty carts, with pre-discount line totals.
+    columns:
+      - name: cart_id
+        description: Source cart identifier.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_carts')
+                field: cart_id
+      - name: customer_id
+        description: Source identifier of the cart owner.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: user_id
+      - name: gross_cart_value
+        description: Sum of unit price times quantity before discounts. Zero for empty carts.
+        data_tests: [not_null, non_negative]
+      - name: total_quantity
+        description: Sum of line quantities. Zero for empty carts.
+        data_tests: [not_null, non_negative]
+
+  - name: product_performance
+    description: One row per product appearing on at least one cart line.
+    columns:
+      - name: product_id
+        description: Source product identifier.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: title
+        description: Product title in the catalog snapshot.
+        data_tests: [not_null]
+      - name: category
+        description: Product category in the catalog snapshot.
+        data_tests: [not_null]
+      - name: gross_cart_value
+        description: Pre-discount simulated cart value summed across all lines for this product.
+        data_tests: [not_null, non_negative]
+      - name: total_quantity
+        description: Sum of quantities across all lines for this product.
+        data_tests: [not_null, non_negative]
+
+  - name: category_performance
+    description: One row per catalog category represented in cart activity.
+    columns:
+      - name: category
+        description: Catalog category shared by the aggregated products.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('product_performance')
+                field: category
+      - name: gross_cart_value
+        description: Sum of gross cart value for the category's products.
+        data_tests: [not_null, non_negative]
+      - name: total_quantity
+        description: Sum of cart item quantities for the category's products.
+        data_tests: [not_null, non_negative]
+
+  - name: customer_performance
+    description: One row per customer with carts. Contains source IDs and aggregate metrics only.
+    columns:
+      - name: customer_id
+        description: Source customer identifier.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: user_id
+      - name: gross_cart_value
+        description: Sum of pre-discount cart values across the customer's carts.
+        data_tests: [not_null, non_negative]
+      - name: cart_count
+        description: Number of carts owned by the customer, including empty carts.
+        data_tests: [not_null, non_negative]
+
+  - name: inventory_alerts
+    description: One row per catalog product. Consumers apply the configurable low-stock threshold.
+    columns:
+      - name: product_id
+        description: Source product identifier.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: title
+        description: Product title in the catalog snapshot.
+        data_tests: [not_null]
+      - name: stock
+        description: Unmodified stock quantity from the catalog snapshot.
+        data_tests: [not_null, non_negative]
+
+  - name: business_kpis
+    description: Exactly one row summarizing the current synthetic cart snapshot.
+    columns:
+      - name: total_gross_cart_value
+        description: Total pre-discount simulated cart value. Zero when no carts exist.
+        data_tests: [not_null, non_negative]
+      - name: cart_count
+        description: Number of carts, including empty carts.
+        data_tests: [not_null, non_negative]
+      - name: average_cart_value
+        description: Total gross value divided by cart count, rounded to two decimals with ties to even. Null when no carts exist.
+        data_tests: [non_negative]
+      - name: total_quantity
+        description: Total cart item quantity across the snapshot. Zero when no carts exist.
+        data_tests: [not_null, non_negative]
+      - name: snapshot_at
+        description: Latest Bronze ingestion instant, or the Gold build time for a wholly empty snapshot.
+        data_tests: [not_null]
