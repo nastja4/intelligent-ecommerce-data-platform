@@ -124,8 +124,15 @@ a { color: inherit; }
 .assistant-markdown > * + * { margin-block-start: var(--space-sm); }
 .assistant-markdown :is(h1, h2, h3, h4, h5, h6) { font-size: 1rem; line-height: 1.35; letter-spacing: normal; }
 .assistant-markdown :is(ol, ul), .assistant-metadata ul { padding-inline-start: var(--space-lg); }
-.assistant-markdown table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.assistant-markdown :is(th, td) { border: 1px solid var(--border); padding: var(--space-xs) var(--space-sm); }
+.assistant-table { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 7px; }
+.assistant-markdown table { width: 100%; table-layout: auto; border-collapse: collapse; font-size: .875rem; }
+.assistant-markdown :is(th, td) {
+  min-width: 5rem; border-bottom: 1px solid var(--border);
+  padding: var(--space-sm); text-align: left; font-variant-numeric: tabular-nums;
+}
+.assistant-markdown :is(th, td)[style*="right"] { white-space: nowrap; }
+.assistant-markdown thead th { background: #e6edf5; }
+.assistant-markdown tbody tr:last-child td { border-bottom: 0; }
 .assistant-markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .assistant-markdown code { background: #e6edf5; border-radius: 4px; padding: 0 .2em; }
 .assistant-metadata {

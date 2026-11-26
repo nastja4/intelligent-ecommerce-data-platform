@@ -18,6 +18,7 @@ test('renders assistant Markdown while suppressing HTML, links, and external ima
     assert.ok(html.includes(`<${tag}>`), tag);
   }
   assert.match(html, /unsafe external/);
+  assert.match(html, /class="assistant-table" role="region" aria-label="Analytical table" tabindex="0"/);
   assert.doesNotMatch(html, /<a\b|<script\b|<img\b|href=|src=/);
 });
 

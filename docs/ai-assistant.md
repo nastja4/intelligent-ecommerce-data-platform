@@ -69,3 +69,18 @@ if ($LASTEXITCODE) { throw 'Ledger migration failed' }
 ```
 
 Use one assistant runtime at a time and preserve the same ledger when changing runtimes. Independent copies cannot account for each other's spending. Keep the native database closed during the backup so the mounted file includes all committed records.
+
+## Docker runtime settings
+
+Compose forwards settings to the `app` backend service only. Start with `--env-file .env.example` for the disabled baseline, or explicitly set runtime shell values before recreating the service. Follow the [masked key prompt](../README.md#optional-ai-at-runtime). A restart retains the container environment. Recreating the app preserves the warehouse and usage volumes under the same Compose project.
+
+| Setting | Default |
+| --- | --- |
+| `AI_ENABLED` | `false` |
+| `ANTHROPIC_API_KEY` | Empty. Required only to enable provider requests. |
+| `ANTHROPIC_MODEL` | `claude-haiku-5-5` |
+| `AI_BUDGET_USD` | `2.00` application ceiling |
+| `AI_MAX_TOOL_ROUNDS` / `AI_MAX_OUTPUT_TOKENS` | `5` / `1500` |
+| `AI_MAX_REQUESTS_PER_MINUTE` / `AI_MAX_QUESTION_LENGTH` | `5` / `2000` |
+
+Keep the key out of image build arguments, frontend configuration, and Compose output. Usage estimates and Anthropic billing are separate. [Owner-observed Docker evidence](../PROGRESS.md#phase-10--release-corrections-and-portfolio)

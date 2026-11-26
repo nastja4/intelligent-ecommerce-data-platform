@@ -413,3 +413,13 @@ The previous MVP and Phase 7 acceptance evidence remains applicable. Hosted full
 | --- | --- |
 | AC-20 | The full-stack workflow passes for the reviewed commit on GitHub. Local workflow lint and fixture smoke runs establish reproducibility but do not establish hosted success. |
 | AC-21 | An owner-approved main push publishes the exact validated full-stack image and a registry pull matches the reported digest. An unapproved SHA does not publish. |
+
+## 15. Approved Phase 10 · Release corrections and portfolio
+
+- **FR-20 · Shareable dashboard pages.** The six dashboard links restore the selected page on initial load, refresh, and browser history navigation. Unknown fragments fall back to the overview. Preserve keyboard navigation and safe, responsive assistant formatting.
+- **FR-21 · Docker runtime configuration and portfolio evidence.** Keep local-only chat and AI-disabled defaults. Allow explicit backend-only runtime settings without changing persisted warehouse or usage state. Verify with isolated fixtures and dummy credentials. Document observed live evidence separately from automated tests and provider billing. Keep portfolio captures free of credentials and account details.
+
+| ID | Phase 10 acceptance criterion |
+| --- | --- |
+| AC-22 | The navigation and Docker runtime corrections pass local regression checks, including direct links and history in native and compiled modes. |
+| AC-23 | The portfolio documentation preserves verification evidence and provides a checklist for owner-captured screenshots of the complete synthetic dataset. |

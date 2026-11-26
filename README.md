@@ -1,8 +1,33 @@
 # Intelligent E-Commerce Data Platform
 
-A local analytics platform that turns synthetic DummyJSON shopping carts into a validated DuckDB snapshot. A retail analyst can use REST or ask Claude Code to compare products and categories, rank customers by simulated cart value, and find products below a stock threshold.
+**Commerce Intelligence** is a local retail analytics dashboard for exploring simulated shopping carts and inventory. It answers three practical questions: what contributes most to cart value, which customers account for the most cart activity, and which products are below a chosen stock threshold?
 
-**Backend MVP verified on Windows and Linux and published to GHCR.** [Acceptance status](PROGRESS.md)
+The project takes data from ingestion through quality checks and a published analytical snapshot. Analysts can use the dashboard, query the API, or ask an optional assistant backed by the same analytical tools. Cart activity is synthetic and measures pre-discount cart value. Completed sales, revenue, and confirmed demand are outside this dataset.
+
+**Project highlights**
+
+- Validated snapshot refresh with rollback protection and reproducible dbt tests.
+- Interactive product, category, customer, and inventory analysis with shareable dashboard links.
+- Read-only REST and MCP tools with an optional assistant and a persistent application spending ledger.
+- One localhost Docker image and a CI pipeline that publishes only an explicitly approved, tested image.
+
+[Docker quick start](#docker) · [Native development](#native-development-on-windows) · [Screenshot gallery](docs/screenshots/README.md) · [Verification evidence](PROGRESS.md)
+
+## Dashboard preview
+
+**Business overview**
+
+![Commerce Intelligence dashboard with four synthetic cart KPIs, category rankings, and low-stock alerts](docs/screenshots/overview.png)
+
+The overview brings the validated cart snapshot and inventory alerts into one view.
+
+**AI Assistant**
+
+![AI Assistant answering a category comparison with a ranked table of gross simulated cart value and item quantity](docs/screenshots/ai-assistant_3.png)
+
+The assistant compares the top three categories and explains the metric behind the ranking.
+
+[View the full gallery and publication review notes](docs/screenshots/README.md)
 
 ## Architecture
 
@@ -21,6 +46,11 @@ flowchart LR
     Queries --> REST["FastAPI · JSON and Swagger"]
     Queries --> MCP["MCP server · stdio"]
     MCP --> Claude["Claude Code"]
+    REST --> Dashboard["React dashboard"]
+    Dashboard --> Chat["FastAPI chat · optional"]
+    Chat --> Ledger["SQLite usage ledger"]
+    Chat <-->|"bounded Messages calls"| Provider["Anthropic · Claude Haiku 5.5"]
+    Chat -->|"official MCP client"| MCP
 ```
 
 | Layer | Implementation |
@@ -31,9 +61,9 @@ flowchart LR
 
 The refresh command builds a separate candidate, runs `dbt build`, checks the expected relation names and types, and closes its handles before replacing the active file. Data tests check required fields, uniqueness, references, numeric ranges, and reconciliation across the marts. The API and MCP server share typed contracts and fixed, parameterized Gold queries. Customers are exposed by ID and aggregate metrics. [Detailed data model](docs/data-model.md)
 
-**Stack:** Python 3.12, HTTPX, DuckDB, dbt Core and dbt-duckdb, FastAPI and Pydantic, official MCP Python SDK 2.3.0, Claude Code, pytest, Docker, GitHub Actions, and GHCR.
+**Stack.** React, TypeScript, Vite, Python 3.12, HTTPX, DuckDB, dbt Core and dbt-duckdb, FastAPI, Pydantic, official MCP and Anthropic Python SDKs, SQLite, pytest, Docker Compose, GitHub Actions, and GHCR.
 
-## Quick start on Windows
+## Native development on Windows
 
 From the repository root in PowerShell, using Python 3.12:
 
@@ -52,6 +82,16 @@ if ($LASTEXITCODE) { throw 'Fixture refresh failed' }
 
 Open [Swagger UI](http://127.0.0.1:8000/docs) or [OpenAPI JSON](http://127.0.0.1:8000/openapi.json). Fixture KPIs are **20.00 gross simulated cart value**, **3 carts**, **6.67 average cart value**, and **3 items**.
 
+In a second PowerShell terminal, use Node 22.16.0 and start the Vite development proxy.
+
+```powershell
+Set-Location frontend
+npm ci
+npm run dev
+```
+
+Open [the native dashboard](http://127.0.0.1:5173). The analytics sections support direct links such as `/#categories`, and the assistant is at `/#assistant`.
+
 Use the same absolute `WAREHOUSE_PATH` for refresh and serving. To test the live source, assign a different path such as `data/live-smoke.duckdb` and run `& $py -m ecommerce.refresh --live`. Live raw source data stays in the local warehouse. Stop readers and writers before replacing any published warehouse and run one refresh at a time.
 
 ## REST and MCP
@@ -64,6 +104,8 @@ Use the same absolute `WAREHOUSE_PATH` for refresh and serving. To test the live
 | `/api/v1/categories` | `get_category_performance` | Category values and quantities |
 | `/api/v1/customers/top?limit=5` | `get_top_customers` | Ranked customer IDs and aggregates |
 | `/api/v1/inventory/low-stock?threshold=10` | `get_low_stock_products` | Inventory strictly below the threshold |
+
+The assistant uses `GET /api/v1/chat/status` for availability and `POST /api/v1/chat` for local chat requests.
 
 From a second terminal:
 
@@ -119,29 +161,41 @@ docker compose --env-file .env.example restart app
 docker compose --env-file .env.example down
 ```
 
-Fixture refresh is a separate, explicit operation. The existing live refresh and MCP stdio commands remain available. Run `python -m ecommerce.refresh --live` as a command override for the maintenance service only when intentionally refreshing from DummyJSON.
-
-### Optional AI at runtime
-
-The standard Compose service runs with AI disabled. To explicitly start the same app with AI enabled, first [migrate any native usage ledger](docs/ai-assistant.md#migrate-the-native-usage-ledger) while both apps are stopped. Then supply the key through a masked prompt in PowerShell. The Docker daemon and users with Docker administrative access can inspect runtime environment variables.
+Use the default fixture refresh for fast, repeatable tests. For demonstrations, explicitly refresh the full synthetic DummyJSON dataset over the network. Run the following in the same Compose project and stop all warehouse readers first.
 
 ```powershell
 docker compose --env-file .env.example stop app
+docker compose --env-file .env.example run --rm --no-deps refresh python -m ecommerce.refresh --live
+if ($LASTEXITCODE) { throw 'DummyJSON refresh failed' }
+docker compose --env-file .env.example up --detach app
+```
+
+The owner-observed Docker snapshot contained 208 carts and 2,417 items, with gross simulated value **3,834,278.63** and average value **18,434.03**. Later refreshes reflect the source at the time they run. [Observed results](PROGRESS.md#phase-10--release-corrections-and-portfolio)
+
+### Optional AI at runtime
+
+Compose defaults to AI disabled with no key. Use `--env-file .env.example` for the documented baseline to avoid automatically loading a local `.env`. To enable the assistant, first [migrate any native usage ledger](docs/ai-assistant.md#migrate-the-native-usage-ledger) while both apps are stopped. Use a dedicated PowerShell terminal for the masked prompt. Docker administrators can inspect runtime environment variables.
+
+```powershell
 $key = Read-Host 'Anthropic API key' -AsSecureString
 try {
     $env:ANTHROPIC_API_KEY = [System.Net.NetworkCredential]::new('', $key).Password
-    docker compose --env-file .env.example run --detach --no-deps --service-ports --name ecommerce-ai-local --env AI_ENABLED=true --env ANTHROPIC_API_KEY app
+    $env:AI_ENABLED = 'true'
+    docker compose --env-file .env.example up --detach --force-recreate --no-build app
 } finally {
     Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+    Remove-Item Env:AI_ENABLED -ErrorAction SilentlyContinue
     $key.Dispose()
 }
 ```
 
-Use `docker stop ecommerce-ai-local` and `docker start ecommerce-ai-local` to restart that configured container. To return to disabled mode, stop and remove `ecommerce-ai-local`, then start the standard Compose service. Keep the usage volume across mode changes. Additional non-secret limits can be passed with `--env` as described in the [local assistant guide](docs/ai-assistant.md).
+To return to disabled mode, clear any AI overrides, then recreate the service with the example file. A regular restart retains the existing container configuration. Recreating the same service keeps both named volumes. [Runtime settings and ledger migration](docs/ai-assistant.md)
 
 ## Verification and CI/CD
 
-The following table records the original backend MVP verification. See [Phase 9 evidence](PROGRESS.md#phase-9--full-stack-cicd) for the full-stack pipeline.
+The original backend MVP was published to GHCR. All four full-stack validation jobs passed on PR #1, and publication was skipped. See [current and historical verification evidence](PROGRESS.md) for precise test counts and release status.
+
+Local Phase 10 checks passed 77 Python tests on Windows and Linux, 11 frontend tests, TypeScript and the production build, workflow lint, and fixture Docker smoke tests. Edge verified all six dashboard routes in both native development and compiled modes.
 
 | Check | Observed result |
 | --- | --- |
@@ -176,7 +230,7 @@ docker run --rm --network none --tmpfs /tmp:rw,nosuid,nodev,mode=1777 ecommerce-
 2. After both jobs succeed, the container job builds and labels the image once, runs pytest with container networking disabled, and runs the Compose smoke test on that same image. The smoke test uses `.env.example` and a new project with temporary synthetic volumes. Cleanup runs after failures. Fixtures and usage are written to temporary volumes and are excluded from artifacts.
 3. Passing main pushes save the tested image archive, checksum, and image ID for three days. Publication requires an exact match between `GHCR_APPROVED_SHA` and the main push SHA. The publish job checks the checksum, loads the artifact, and verifies the image ID and source revision label before pushing the same image to the lowercase repository path. Only this job has package write permission.
 
-AI is disabled in the workflow and Compose. Enabled-behavior tests replace the Anthropic transport with deterministic mocks, so the workflow needs no API key or credits.
+The smoke test verifies default-disabled Compose startup and recreates the app with dummy settings to check runtime propagation and volume persistence. Enabled request tests mock the Anthropic transport, so CI needs no API key or credits.
 
 ### Owner-approved release
 
@@ -218,6 +272,7 @@ Keep port 8000 free and stop other instances of the Compose stack before startin
 - REST is intended for local use and has no production authentication. MCP exposes predefined tools over local stdio.
 - Claude Code's phrasing and tool selection can vary. Tool results and the metric definitions are the reference for interpreting answers.
 - Independent clean-checkout reproduction remains open.
+- Internet-facing deployment is future work. It would require authenticated access, TLS, managed secrets, durable metering across replicas, and a fresh review of data access and isolation. The existing localhost package is intended for local use.
 
 ## Optional React dashboard
 
@@ -225,6 +280,8 @@ Keep port 8000 free and stop other instances of the Compose stack before startin
 
 [Data model and metric definitions](docs/data-model.md) · [Claude Code demo](docs/demo.md) · [Cloud portability](docs/cloud-portability.md) · [Specification](SPEC.md) · [Implementation plan](PLAN.md) · [Progress and acceptance](PROGRESS.md)
 
-## Optional local AI Assistant
+## How the optional assistant works
 
-The dashboard's **AI Assistant** sends questions, bounded chat context and selected synthetic analytical results to Anthropic. Its agent uses Claude Haiku 5.5 and the same five MCP tools as the Claude Code demo. Read the [local assistant setup, cost controls and verification](docs/ai-assistant.md).
+FastAPI validates the local request and conversation bounds. The agent discovers the five allowlisted tools through the MCP Python client and reserves estimated spend in SQLite before each Claude Haiku 5.5 call. It validates tool requests, reads the Gold snapshot through MCP, and returns tool evidence, snapshot metadata, and estimated token cost with the answer. The frontend renders Markdown with HTML, links, and remote images disabled.
+
+The default application budget is USD 2.00, with up to five tool rounds, six model calls per request, and five chat requests per minute. Uncertain calls retain their reservation, and SDK retries are disabled. The API key stays in the backend at runtime. The local ledger estimates spend and preserves it across container replacement. Billing and provider-side limits are managed separately. [Assistant architecture and accounting](docs/ai-assistant.md)

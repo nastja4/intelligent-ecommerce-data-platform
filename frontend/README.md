@@ -6,7 +6,7 @@ An optional React dashboard for the existing backend MVP. It reads the validated
 
 - Windows PowerShell, Node.js 22.16.0 and npm 10.9.2.
 - The repository's Python 3.12 `.venv` with the backend dependencies installed.
-- An initialized warehouse. See the [backend quick start](../README.md#quick-start-on-windows) for setup.
+- An initialized warehouse. See the [backend quick start](../README.md#native-development-on-windows) for setup.
 
 ## Start locally
 

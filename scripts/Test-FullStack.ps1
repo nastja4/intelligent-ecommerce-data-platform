@@ -47,6 +47,21 @@ $env:ECOMMERCE_IMAGE = $Image
 $env:ECOMMERCE_PORT = "$Port"
 $env:ECOMMERCE_SUBNET = "$SubnetPrefix.0/24"
 $env:ECOMMERCE_GATEWAY = "$SubnetPrefix.1"
+$defaultAi = @{
+    AI_ENABLED = 'false'; ANTHROPIC_API_KEY = ''; ANTHROPIC_MODEL = 'claude-haiku-5-5'
+    AI_BUDGET_USD = '2.00'; AI_MAX_TOOL_ROUNDS = '5'; AI_MAX_OUTPUT_TOKENS = '1500'
+    AI_MAX_REQUESTS_PER_MINUTE = '5'; AI_MAX_QUESTION_LENGTH = '2000'
+}
+$enabledAi = @{
+    AI_ENABLED = 'true'; ANTHROPIC_API_KEY = 'sk-ant-phase10-mock-only-credential'
+    ANTHROPIC_MODEL = 'claude-haiku-5-5'; AI_BUDGET_USD = '1.25'; AI_MAX_TOOL_ROUNDS = '3'
+    AI_MAX_OUTPUT_TOKENS = '700'; AI_MAX_REQUESTS_PER_MINUTE = '4'; AI_MAX_QUESTION_LENGTH = '1600'
+}
+$previousAi = @{}
+foreach ($name in $defaultAi.Keys) {
+    $previousAi[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+}
 
 function Invoke-Compose {
     docker compose @compose @args
@@ -75,7 +90,23 @@ function Wait-ForApi {
     throw 'The container did not become ready.'
 }
 
+function Assert-AiConfiguration([hashtable]$Expected) {
+    # Use only the checked-in example and explicit test values. Do not emit config output.
+    $configuration = Invoke-Compose --profile maintenance config --format json | Out-String | ConvertFrom-Json
+    if (-not $configuration.services.refresh) { throw 'Missing Compose refresh service.' }
+    $refreshEnvironment = $configuration.services.refresh.environment
+    foreach ($name in $Expected.Keys) {
+        if ([string]$configuration.services.app.environment.$name -cne $Expected[$name]) {
+            throw "Unexpected Compose application setting: $name."
+        }
+        if ($refreshEnvironment -and $refreshEnvironment.PSObject.Properties[$name]) {
+            throw "An AI setting reached the refresh service: $name."
+        }
+    }
+}
+
 try {
+    Assert-AiConfiguration $defaultAi
     @'
 import os
 import re
@@ -177,19 +208,39 @@ print("Verified sibling and spoofed forwarded address rejection.")
     Invoke-Compose restart app
     Wait-ForApi
     if ((Invoke-Compose ps -q app) -ne $container) { throw 'Restart unexpectedly replaced the container.' }
+    foreach ($name in $enabledAi.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $enabledAi[$name], 'Process')
+    }
+    Assert-AiConfiguration $enabledAi
     Invoke-Compose up --detach --no-build --pull never --force-recreate app
     Wait-ForApi
     $replacement = Invoke-Compose ps -q app
     if ($replacement -eq $container) { throw 'Expected a replacement container.' }
     if ((docker inspect --format '{{.Image}}' $replacement) -ne $imageId) { throw 'Unexpected replacement image.' }
     if ((Invoke-RestMethod "$base/api/v1/kpis").snapshot_at -ne $kpis.snapshot_at) { throw 'Snapshot did not persist.' }
+    $statusResponse = Invoke-WebRequest "$base/api/v1/chat/status" -Headers $chatHost -UseBasicParsing
+    $enabledStatus = $statusResponse.Content | ConvertFrom-Json
+    if (-not $enabledStatus.enabled -or $enabledStatus.availability -ne 'ready' -or
+        $enabledStatus.remaining_budget_usd -ne '1.249980000' -or
+        $statusResponse.Content.Contains($enabledAi.ANTHROPIC_API_KEY)) { throw 'Unexpected enabled chat status.' }
+    Assert-Status 403 '/api/v1/chat' $post
+    foreach ($asset in $assets) {
+        $assetResponse = Invoke-WebRequest "$base$asset" -UseBasicParsing
+        if ([string]$assetResponse.Content -like "*$($enabledAi.ANTHROPIC_API_KEY)*") { throw 'Dummy key reached a frontend asset.' }
+    }
     @'
 from decimal import Decimal
-from ecommerce.ai_config import usage_path_from_env
+from ecommerce.ai_config import AISettings, usage_path_from_env
 from ecommerce.ai_usage import Ledger
 
-assert Ledger(usage_path_from_env(), Decimal("2.00")).balances() == (20_000, 1_999_980_000)
-print("Verified the fixture snapshot and synthetic usage after replacement.")
+settings = AISettings.load()
+assert settings.enabled and settings.configured
+assert settings.api_key.get_secret_value() == "sk-ant-phase10-mock-only-credential"
+assert (settings.model, settings.budget) == ("claude-haiku-5-5", Decimal("1.25"))
+assert (settings.tool_rounds, settings.output_tokens) == (3, 700)
+assert (settings.requests_per_minute, settings.question_length) == (4, 1600)
+assert Ledger(usage_path_from_env(), settings.budget).balances() == (20_000, 1_249_980_000)
+print("Verified dummy runtime configuration and both volumes after replacement.")
 '@ | docker compose @compose exec -T app python -
     if ($LASTEXITCODE -ne 0) { throw 'Ledger persistence check failed.' }
     $succeeded = $true
@@ -217,5 +268,8 @@ print("Verified the fixture snapshot and synthetic usage after replacement.")
         $env:ECOMMERCE_PORT = $previousPort
         $env:ECOMMERCE_SUBNET = $previousSubnet
         $env:ECOMMERCE_GATEWAY = $previousGateway
+        foreach ($name in $defaultAi.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previousAi[$name], 'Process')
+        }
     }
 }

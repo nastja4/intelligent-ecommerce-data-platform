@@ -100,4 +100,30 @@ All 77 Python tests passed on Windows and Linux. Frontend typecheck, all 8 tests
 - The production Compose smoke script passed from Windows and Linux PowerShell using alternate loopback ports and separate bridges. It exercised the same image before and after container replacement and left no test containers, networks or volumes. The original app on port 8000 remained running. A deliberate verification of the failed-overlap project confirmed its temporary resources were also removed.
 - The local image artifact rehearsal verified checksum, save/load identity and the expected source revision. The real environment file was untouched. Tests used synthetic data and mocked Anthropic responses.
 
-**AC-20** remains pending a hosted run. **AC-21** remains pending owner approval, hosted publication and independent verification of the registry digest. The published backend MVP evidence above is unchanged.
+At the end of local Phase 9, **AC-20** awaited hosted verification. See the Phase 10 entry for the owner-confirmed PR run. **AC-21** remains pending owner approval, hosted publication and independent verification of the registry digest. The published backend MVP evidence above is unchanged.
+
+## Phase 10 · Release corrections and portfolio
+
+**Hosted check evidence.** The owner confirmed that all four validation jobs passed on PR #1. These were Python and dbt on Windows, Python and dbt on Ubuntu, frontend checks and build, and the full-stack Docker image build and validation. GHCR publication was correctly skipped on the PR. AC-20 is verified for the Phase 9 PR run. Hosted validation of the Phase 10 corrections remains pending. AC-21 remains pending owner-approved publication and an independent digest comparison.
+
+### Owner-observed Docker verification
+
+| Check | Observed result |
+| --- | --- |
+| Complete synthetic DummyJSON refresh | Gross simulated cart value **3,834,278.63**, **208** carts, average cart value **18,434.03**, **2,417** total items |
+| Native SQLite ledger migration | Estimated usage **USD 0.001519900** and remaining estimated budget **USD 1.998480100** preserved in the Docker volume |
+| Live category comparison | `get_category_performance` and `get_business_kpis` executed. The three category values and quantities matched expected results |
+| Latest request | **3,889** input tokens, **957** output tokens, **USD 0.0008674** estimated |
+| Cumulative estimated usage | **USD 0.0023873** |
+
+The owner performed these live checks separately from automated verification. Ledger estimates do not establish actual Anthropic charges. The existing usage ledger was left untouched during Phase 10 implementation.
+
+### Local Phase 10 verification
+
+- All 77 Python tests passed on Windows and in the network-disabled Linux image. Frontend typecheck, all 11 tests, the production build, and actionlint passed.
+- Isolated Compose runs from Windows and Linux PowerShell passed default-disabled and dummy-enabled checks. The refresh service, static assets and status response excluded the dummy credential. Same-origin restrictions held, and replacement preserved the fixture snapshot and synthetic usage record. Only test resources were removed.
+- Edge exercised direct loads and reloads of all six pages in Vite and compiled FastAPI, plus sidebar navigation, Back and Forward, invalid fragments, keyboard focus and a wide analytical table at 390 × 844. Browser responses were mocked.
+
+AC-22 is verified locally. The owner also manually verified the corrected dashboard navigation in Docker. For AC-23, the owner captured all 12 authentic screenshots covering analytics, the live assistant, Swagger, and CI. The gallery is complete, with public image review pending for account avatars and visible assistant estimates. Validation of the final PR revision remains outstanding.
+
+[Portfolio screenshot gallery and publication review](docs/screenshots/README.md)

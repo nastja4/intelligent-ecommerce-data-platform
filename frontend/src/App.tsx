@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { api } from './api';
 import { rankingBounds, stockBounds, swaggerPath } from './config';
@@ -10,14 +10,10 @@ import { Metrics } from './components/Metrics';
 import { NumberFilter } from './components/NumberFilter';
 import { ResultState } from './components/ResultState';
 import { Assistant } from './components/Assistant';
+import { dashboardPage, navigation, watchDashboardHash } from './navigation';
 
-const navigation = [
-  { target: 'overview', symbol: '▦', label: 'Overview' },
-  { target: 'categories', symbol: '▤', label: 'Categories' },
-  { target: 'products', symbol: '◇', label: 'Products' },
-  { target: 'customers', symbol: '◉', label: 'Customers' },
-  { target: 'inventory', symbol: '▥', label: 'Inventory' },
-];
+const subscribe = (onChange: () => void) => watchDashboardHash(window, onChange);
+const readHash = () => window.location.hash;
 
 function Panel({ id, title, description, action, children }: {
   id: string; title: string; description: string; action?: ReactNode; children: ReactNode;
@@ -36,9 +32,17 @@ function Panel({ id, title, description, action, children }: {
 
 export function App() {
   const [revision, reload] = useState(0);
-  const [active, setActive] = useState('overview');
+  const page = dashboardPage(useSyncExternalStore(subscribe, readHash));
+  const active = page.target;
   const [assistantOpened, openAssistant] = useState(false);
   const showingAssistant = active === 'assistant';
+  const overview = active === 'overview';
+  const content = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showingAssistant) openAssistant(true);
+    if (content.current) content.current.scrollTop = 0;
+  }, [active, showingAssistant]);
   const [productLimit, setProductLimit] = useState(rankingBounds.initial);
   const [customerLimit, setCustomerLimit] = useState(rankingBounds.initial);
   const [threshold, setThreshold] = useState(stockBounds.initial);
@@ -59,22 +63,20 @@ export function App() {
     health.error.kind === 'connection' ? 'API disconnected' : 'API check failed';
 
   return <div className="shell">
-    <a className="skip-link" href="#main-content">Skip to dashboard</a>
+    <a className="skip-link" href="#main-content" onClick={event => {
+      event.preventDefault();
+      content.current?.focus();
+    }}>Skip to dashboard</a>
     <aside className="sidebar">
-      <a className="brand" href="#overview" onClick={() => setActive('overview')}>
+      <a className="brand" href="#overview">
         <img className="brand-mark" src="/favicon.svg" alt="" width={35} height={35} />
         <span>Commerce <strong>Intelligence</strong></span>
       </a>
       <nav aria-label="Dashboard sections">
         {navigation.map(item => <a key={item.target} href={`#${item.target}`}
-          aria-current={active === item.target ? 'location' : undefined}
-          onClick={() => setActive(item.target)}>
+          aria-current={active === item.target ? 'page' : undefined}>
           <span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}
         </a>)}
-        <a href="#assistant" aria-current={showingAssistant ? 'page' : undefined}
-          onClick={() => { openAssistant(true); setActive('assistant'); }}>
-          <span className="nav-symbol" aria-hidden="true">✦</span>AI Assistant
-        </a>
       </nav>
       <a className="docs-link" href={swaggerPath} target="_blank" rel="noreferrer">
         <span aria-hidden="true">↗</span> Swagger documentation
@@ -92,7 +94,7 @@ export function App() {
         <header className="page-header">
           <div className="page-header-inner">
             <div className="overview-heading">
-              <h1 id="overview-title">{showingAssistant ? 'AI Assistant' : 'Business overview'}</h1>
+              <h1 id="overview-title">{page.title}</h1>
               <button className="button reload" type="button" onClick={() => reload(value => value + 1)}>
                 <span aria-hidden="true">↻</span> Reload dashboard
               </button>
@@ -109,23 +111,23 @@ export function App() {
             </div>
           </div>
         </header>
-        <div id="main-content" className="dashboard-scroll" role="region"
+        <div id="main-content" ref={content} className="dashboard-scroll" role="region"
           aria-label={showingAssistant ? 'AI Assistant' : 'Dashboard analytics'} tabIndex={0}>
-          {assistantOpened && <section id="assistant" className="dashboard-content assistant-content" hidden={!showingAssistant}>
+          {(showingAssistant || assistantOpened) && <section id="assistant" className="dashboard-content assistant-content" hidden={!showingAssistant}>
             <Assistant />
           </section>}
-          <div className="dashboard-content" hidden={showingAssistant}>
-            <section id="overview" className="overview" aria-label="Overview metrics">
+          {!showingAssistant && <div className="dashboard-content">
+            {overview && <section id="overview" className="overview" aria-label="Overview metrics">
               <Metrics resource={kpis} />
-            </section>
+            </section>}
 
-            <div className="analysis-grid">
-              <Panel id="categories" title="Category performance" description="Gross simulated cart value by catalog category">
+            {(overview || active === 'categories' || active === 'inventory') && <div className={overview ? 'analysis-grid' : undefined}>
+              {(overview || active === 'categories') && <Panel id="categories" title="Category performance" description="Gross simulated cart value by catalog category">
                 <ResultState resource={categories} title="categories">
                   {data => <CategoryChart categories={data.items} />}
                 </ResultState>
-              </Panel>
-              <Panel id="inventory" title="Low-stock inventory" description={`Products with stock below ${formatCount(threshold)}`}
+              </Panel>}
+              {(overview || active === 'inventory') && <Panel id="inventory" title="Low-stock inventory" description={`Products with stock below ${formatCount(threshold)}`}
                 action={<NumberFilter label="Stock threshold" bounds={stockBounds} onApply={setThreshold} />}>
                 <ResultState resource={inventory} title="inventory">
                   {data => <DataTable label="Low-stock inventory" rows={data.items} rowKey={row => row.product_id}
@@ -134,11 +136,11 @@ export function App() {
                       { label: 'Stock', numeric: true, render: row => <span className="stock-count">{formatCount(row.stock)}</span> },
                     ]} />}
                 </ResultState>
-              </Panel>
-            </div>
+              </Panel>}
+            </div>}
 
-            <div className="rankings-grid">
-              <Panel id="products" title="Top products" description={`Up to ${productLimit} products ranked by gross cart value`}
+            {(overview || active === 'products' || active === 'customers') && <div className={overview ? 'rankings-grid' : undefined}>
+              {(overview || active === 'products') && <Panel id="products" title="Top products" description={`Up to ${productLimit} products ranked by gross cart value`}
                 action={<NumberFilter label="Product limit" bounds={rankingBounds} onApply={setProductLimit} />}>
                 <ResultState resource={products} title="products">
                   {data => <DataTable label="Top products" rows={data.items} rowKey={row => row.product_id}
@@ -148,8 +150,8 @@ export function App() {
                       { label: 'Items', numeric: true, render: row => formatCount(row.total_quantity) },
                     ]} />}
                 </ResultState>
-              </Panel>
-              <Panel id="customers" title="Top customers" description={`Up to ${customerLimit} customer IDs ranked by gross cart value`}
+              </Panel>}
+              {(overview || active === 'customers') && <Panel id="customers" title="Top customers" description={`Up to ${customerLimit} customer IDs ranked by gross cart value`}
                 action={<NumberFilter label="Customer limit" bounds={rankingBounds} onApply={setCustomerLimit} />}>
                 <ResultState resource={customers} title="customers">
                   {data => <DataTable label="Top customers" rows={data.items} rowKey={row => row.customer_id}
@@ -159,9 +161,9 @@ export function App() {
                       { label: 'Carts', numeric: true, render: row => formatCount(row.cart_count) },
                     ]} />}
                 </ResultState>
-              </Panel>
-            </div>
-          </div>
+              </Panel>}
+            </div>}
+          </div>}
         </div>
       </main>
     </div>
