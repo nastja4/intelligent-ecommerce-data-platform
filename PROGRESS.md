@@ -127,3 +127,9 @@ The owner performed these live checks separately from automated verification. Le
 AC-22 is verified locally. The owner also manually verified the corrected dashboard navigation in Docker. For AC-23, the owner captured all 12 authentic screenshots covering analytics, the live assistant, Swagger, and CI. The gallery is complete, with public image review pending for account avatars and visible assistant estimates. Validation of the final PR revision remains outstanding.
 
 [Portfolio screenshot gallery and publication review](docs/screenshots/README.md)
+
+## Phase 11 · Frontend lint integration
+
+The frontend uses ESLint flat config with exact development pins, recommended JavaScript and TypeScript rules, and React Hooks placement and dependency checks. VS Code workspace settings point to the frontend package. CI runs lint before the frontend build and keeps the existing Docker and GHCR release flow.
+
+Local Node 22.16.0 verification passed `npm ci`, lint with zero warnings and errors, TypeScript, all 11 frontend tests, and the Vite production build. Running ESLint from the repository root confirmed the TSX parser and the browser, Hooks, and Node test scopes. The workflow passed actionlint 1.7.12. All 105 runtime package lock entries kept their versions and integrity hashes. Hosted verification of this revision is pending.

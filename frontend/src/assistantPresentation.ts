@@ -8,9 +8,9 @@ export const assistantMarkdown: Options = {
   disallowedElements: ['a', 'img'],
   unwrapDisallowed: true,
   components: {
-    table: ({ node: _node, ...props }) => createElement(
+    table: ({ children }) => createElement(
       'div', { className: 'assistant-table', role: 'region', 'aria-label': 'Analytical table', tabIndex: 0 },
-      createElement('table', props),
+      createElement('table', null, children),
     ),
   },
 };
