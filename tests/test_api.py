@@ -29,6 +29,7 @@ def test_rest_responses_and_openapi(configured_warehouse: Path) -> None:
         assert set(schema["paths"]) == {
             "/health", "/api/v1/kpis", "/api/v1/products/top", "/api/v1/categories",
             "/api/v1/customers/top", "/api/v1/inventory/low-stock",
+            "/api/v1/chat/status", "/api/v1/chat",
         }
         parameter = schema["paths"]["/api/v1/products/top"]["get"]["parameters"][0]["schema"]
         assert (parameter["minimum"], parameter["maximum"], parameter["default"]) == (1, 100, 10)

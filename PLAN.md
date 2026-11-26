@@ -249,3 +249,34 @@ Write all project documentation in English. The README covers prerequisites, cle
 **Optional after all gates** includes incremental dbt models, scheduled ingestion, a dashboard and an actual cloud warehouse migration. Streaming, production infrastructure, production auth, distributed processing, production orchestration, historical tracking, LLM training and production deployment are outside MVP scope.
 
 Before signing off implementation, review code and SQL against the traced requirements, confirm error paths and documentation, record acceptance evidence, and obtain explicit approval before any commit or push. Track missing external evidence against its acceptance ID and owner.
+
+## Phase 7 · Integrated AI Business Assistant
+
+Phase 7 follows the optional React dashboard increment and leaves the published MVP unchanged. Runtime scope is native localhost.
+
+| Order | Requirements and acceptance | Deliverable and verification |
+| --- | --- | --- |
+| 1 | FR-14 · AC-14 | Review the interrupted dependency change, validate the hash lock and add backend-only settings and ignored SQLite usage storage. Verify configuration, pricing tiers, atomic reservations and rate limits with pytest. |
+| 2 | FR-13/14 · AC-13/14 | Discover the five existing MCP stdio tools using the packaged interpreter and canonical warehouse path. Validate tool arguments and results, replay tool and thinking blocks, and reserve each bounded Messages call. Exercise fixture responses through a real local MCP session with the Messages transport mocked. |
+| 3 | FR-14/15 · AC-14/15 | Add localhost chat routes and an accessible React assistant inside the existing dashboard shell. Test existing analytics, compile TypeScript and verify disabled, pending, success and error states in Edge. |
+| 4 | FR-15 · AC-15/16 | Document assumptions and remaining checks. Run the full local verification suite. Record live access as pending separate owner approval. Production Docker and hosted CI/CD updates belong to a later phase. |
+
+Verification uses a unique project-local pytest base directory with the cache provider disabled on Windows. Run the existing frontend typecheck, test and build commands. A clean fixture refresh covers dbt and feeds native MCP. No automated tests use Anthropic credentials or call its servers.
+
+## Phase 8 · Production full-stack Docker
+
+1. **FR-16 → AC-17.** Pin the frontend build image. Install via the frontend lock, typecheck, build, and copy only `dist` into the Python runtime. Add explicit static routes, preserving native operation and the API route contract. Verify with pytest, frontend commands and a local image build.
+2. **FR-17 → AC-18/19.** Add localhost-only Compose serving and explicit maintenance, dedicated bridge checks and separate named volumes. Preserve the budget ledger on restart and replacement. Check fixture refresh, mount modes, non-root permissions, ledger persistence, default-disabled chat, trusted-origin rejection and build-context exclusions.
+3. **FR-16/17 → AC-17/18/19.** Verify the compiled dashboard in Edge on one origin. Run the complete Python suite with the provider mocked, including inside Docker with networking disabled. Document runtime-only AI configuration and non-overwriting ledger migration. Defer workflow edits, publication and cloud deployment.
+
+## Phase 9 · Full-stack CI/CD
+
+1. **FR-18 → AC-20.** Keep the Python matrix and add an independent Node 22.16.0 job using the frontend lock. Gate the single Docker build on both jobs. Run network-disabled Python tests and the full Compose smoke test against its exact image. Use a per-run project, reject pre-existing resources, and clean synthetic containers, networks and volumes in the script and an always-run workflow step.
+2. **FR-19 → AC-21.** Preserve the approved-SHA gate and commit tag. On passing main pushes, retain the archive, checksum and expected image ID for three days. In the publication job, verify the archive and image revision before retagging and pushing. Keep package write access isolated.
+3. **FR-18/19 → AC-20/21.** Lint the workflow and exercise its commands locally with deterministic fixtures. Record local results separately. Leave the hosted run, publication gate and registry digest pull for the owner's approved release.
+
+## Phase 10 · Release corrections and portfolio
+
+1. **FR-20 → AC-22.** Derive page selection from the browser hash and observe hash changes. Verify direct entry, reload, history, invalid fragments, and keyboard access in Vite and the compiled dashboard. Preserve safe Markdown and responsive tables.
+2. **FR-21 → AC-22.** Preserve the owner's Compose runtime settings. Exercise disabled defaults, explicit dummy overrides, local-only checks and data persistence in an isolated smoke project.
+3. **FR-21 → AC-23.** Organize the portfolio README, record owner-observed production and hosted evidence, and document safe capture steps. Leave final hosted checks and SHA-approved publication to the owner.

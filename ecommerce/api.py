@@ -1,14 +1,17 @@
-"""Local JSON API for the published analytical snapshot."""
+"""Local JSON API and optional compiled dashboard for the published snapshot."""
 
+from pathlib import Path
 from typing import Annotated
 
 import uvicorn
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ecommerce import queries
+from ecommerce.ai_api import router as chat_router
 from ecommerce.contracts import (
     DEFAULT_LIMIT,
     DEFAULT_THRESHOLD,
@@ -38,6 +41,9 @@ app = FastAPI(
         500: {"model": ErrorResponse, "description": "Analytical query failed"},
     },
 )
+
+
+app.include_router(chat_router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -89,5 +95,26 @@ def low_stock(
     return queries.get_low_stock_products(threshold)
 
 
+def mount_dashboard(application: FastAPI, dist: Path) -> None:
+    index = dist / "index.html"
+    assets = dist / "assets"
+    favicon = dist / "favicon.svg"
+    if not index.is_file() or not assets.is_dir() or not favicon.is_file():
+        return
+
+    @application.get("/", include_in_schema=False)
+    def dashboard() -> FileResponse:
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+    @application.get("/favicon.svg", include_in_schema=False)
+    def dashboard_favicon() -> FileResponse:
+        return FileResponse(favicon, media_type="image/svg+xml")
+
+    application.mount("/assets", StaticFiles(directory=assets), name="dashboard-assets")
+
+
+mount_dashboard(app, Path(__file__).resolve().parent.parent / "frontend" / "dist")
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, access_log=False)
+    uvicorn.run(app, host="127.0.0.1", port=8000, access_log=False, proxy_headers=False)

@@ -55,6 +55,11 @@ profiles.local.yml
 build/
 dist/
 
+# Frontend dependencies and build artifacts
+node_modules/
+.vite/
+*.tsbuildinfo
+
 # Local assistant configuration
 /.claude/
 /CLAUDE.local.md

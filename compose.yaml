@@ -1,0 +1,41 @@
+services:
+  app:
+    image: "${ECOMMERCE_IMAGE:-ecommerce-fullstack:local}"
+    build: .
+    ports:
+      - "127.0.0.1:${ECOMMERCE_PORT:-8000}:8000"
+    environment:
+      AI_ENABLED: "${AI_ENABLED:-false}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-haiku-5-5}"
+      AI_BUDGET_USD: "${AI_BUDGET_USD:-2.00}"
+      AI_MAX_TOOL_ROUNDS: "${AI_MAX_TOOL_ROUNDS:-5}"
+      AI_MAX_OUTPUT_TOKENS: "${AI_MAX_OUTPUT_TOKENS:-1500}"
+      AI_MAX_REQUESTS_PER_MINUTE: "${AI_MAX_REQUESTS_PER_MINUTE:-5}"
+      AI_MAX_QUESTION_LENGTH: "${AI_MAX_QUESTION_LENGTH:-2000}"
+      AI_DOCKER_TRUSTED_PEER: "${ECOMMERCE_GATEWAY:-172.30.80.1}"
+    volumes:
+      - warehouse:/data:ro
+      - usage:/usage
+    networks:
+      - application
+
+  refresh:
+    image: "${ECOMMERCE_IMAGE:-ecommerce-fullstack:local}"
+    profiles: ["maintenance"]
+    command:
+      ["python", "-m", "ecommerce.refresh", "--fixture-dir", "tests/fixtures"]
+    volumes:
+      - warehouse:/data
+
+volumes:
+  warehouse:
+  usage:
+
+networks:
+  application:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "${ECOMMERCE_SUBNET:-172.30.80.0/24}"
+          gateway: "${ECOMMERCE_GATEWAY:-172.30.80.1}"

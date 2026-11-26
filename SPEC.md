@@ -375,3 +375,51 @@ A feature is complete when:
 - Documentation is updated.
 - The implementation has been reviewed.
 - Changes are committed to Git.
+
+## 12. Approved Phase 7 extension · Integrated AI Business Assistant
+
+The completed backend MVP and AC-01 through AC-12 retain their original scope. The no-paid-API requirement applies to that MVP. Phase 7 separately authorizes a native localhost assistant using the first-party Anthropic API and an estimated application budget of at most USD 2.00. Real paid requests require separate approval.
+
+- **FR-13 · Assistant and tool grounding.** The React assistant calls local FastAPI chat routes. The backend uses the official Anthropic Messages SDK with Claude Haiku 5.5 and the official MCP stdio client. The agent discovers and validates the five approved read-only analytical tools. Tool calls go through MCP to the published Gold snapshot. The agent supports multiple tools per turn, reports execution outcomes, and provides snapshot and metric context when available. It explains unavailable historical or completed sales metrics. Synthetic cart value has no verified currency and represents neither revenue nor profit. Customer results contain IDs and aggregates.
+- **FR-14 · Configuration and cost protection.** Load ignored backend-only dotenv configuration at runtime and default to disabled. Require loopback access and permitted hosts and browser origins. Never send secrets to the frontend or MCP child. Bound request rate, question and conversation length, tool results, timeouts, tool rounds, total Messages calls and model output. Disable SDK retries and prompt caching. Reserve estimated worst-case short-context cost before each call in a separate concurrency-safe persistent ledger. Retain uncertain reservations. Keep provider-side limits and prepaid credit protection independent of estimates.
+- **FR-15 · Assistant experience and verification.** Provide accessible session-only chat, suggested questions, tool details, model and budget status, clear and pending states, and sanitized errors. Keep dashboard layout and existing read-only APIs functional. Automated validation uses mock provider responses and deterministic fixture data. Production integration and publication are outside this increment.
+
+| ID | Phase 7 acceptance criterion |
+| --- | --- |
+| AC-13 | Native assistant discovers and uses approved MCP tools with deterministic fixtures in single-tool and multi-tool mocked conversations. Tool arguments, tool-use IDs and stop reasons are validated. |
+| AC-14 | Chat is local-only and disabled by default. Invalid requests and failures produce sanitized responses. Token accounting, persistent reservations, concurrency and limits pass automated tests. |
+| AC-15 | React sends a bounded conversation and safely displays answers, available snapshots, MCP execution outcomes, remaining budget and clear error and disabled states. Verify in Edge with the provider mocked. |
+| AC-16 | A separately authorized live smoke test verifies first-party model access and one grounded analytical response. Record actual tokens and estimated cost. |
+
+## 13. Approved Phase 8 extension · Production full-stack image
+
+- **FR-16 · Single-origin packaging.** Build the React dashboard with pinned Node and `npm ci`. Run TypeScript checks and copy only the compiled dashboard into the non-root, hash-locked Python image. FastAPI serves the dashboard, assets, favicon, REST and documentation together. Native development still supports optional assets and the Vite proxy. Preserve the existing endpoint contracts and JSON API 404s.
+- **FR-17 · Local container operation.** Publish only on host IPv4 loopback. Keep AI disabled by default, use runtime-only credentials, require a trusted bridge peer and same-origin browser metadata for paid chat, and preserve native access checks. Keep the validated warehouse readable through a read-only serving volume and use a separate persistent writable usage volume. Refresh remains an explicit maintenance operation with readers stopped. Supply a ledger migration procedure that retains the original and refuses to overwrite an existing destination.
+
+| ID | Phase 8 acceptance criterion |
+| --- | --- |
+| AC-17 | A single non-root image serves the dashboard, compiled assets, favicon, existing analytics, Swagger and OpenAPI. Unknown API routes return JSON 404. Verify frontend traffic in Edge through the single published origin. |
+| AC-18 | Explicit fixture refresh succeeds with dbt validation. Read-only warehouse and writable ledger volumes retain their state across container replacement. |
+| AC-19 | AI defaults to disabled, the production chat boundary rejects an untrusted peer or origin, mocked enabled flows pass without paid requests, and the runtime image excludes local secrets and generated state. |
+
+The previous MVP and Phase 7 acceptance evidence remains applicable. Hosted full-stack CI/CD and publication require a later approved increment.
+
+## 14. Approved Phase 9 extension · Full-stack CI/CD
+
+- **FR-18 · Full-stack validation.** Pull requests and main pushes run fixture dbt and hash-locked Python tests on Windows and Linux, plus an independent lockfile-based Node build and frontend tests. A dependent job builds the production image once, tests it with container networking disabled for pytest, and verifies serving and persistence using temporary Compose resources. Clean up those resources after failure or success. Automated AI tests use mocked Anthropic responses and no real credentials.
+- **FR-19 · Exact-image delivery.** Only successful main pushes with `GHCR_APPROVED_SHA` matching the workflow commit may publish. Transfer only the validated image archive, its checksum and image ID. Verify the archive, reloaded image ID and revision before pushing the same image to a commit-SHA tag. Only the publish job may write packages. Exclude secrets, warehouses and usage ledgers from every release artifact.
+
+| ID | Phase 9 acceptance criterion |
+| --- | --- |
+| AC-20 | The full-stack workflow passes for the reviewed commit on GitHub. Local workflow lint and fixture smoke runs establish reproducibility but do not establish hosted success. |
+| AC-21 | An owner-approved main push publishes the exact validated full-stack image and a registry pull matches the reported digest. An unapproved SHA does not publish. |
+
+## 15. Approved Phase 10 · Release corrections and portfolio
+
+- **FR-20 · Shareable dashboard pages.** The six dashboard links restore the selected page on initial load, refresh, and browser history navigation. Unknown fragments fall back to the overview. Preserve keyboard navigation and safe, responsive assistant formatting.
+- **FR-21 · Docker runtime configuration and portfolio evidence.** Keep local-only chat and AI-disabled defaults. Allow explicit backend-only runtime settings without changing persisted warehouse or usage state. Verify with isolated fixtures and dummy credentials. Document observed live evidence separately from automated tests and provider billing. Keep portfolio captures free of credentials and account details.
+
+| ID | Phase 10 acceptance criterion |
+| --- | --- |
+| AC-22 | The navigation and Docker runtime corrections pass local regression checks, including direct links and history in native and compiled modes. |
+| AC-23 | The portfolio documentation preserves verification evidence and provides a checklist for owner-captured screenshots of the complete synthetic dataset. |
