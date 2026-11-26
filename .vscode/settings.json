@@ -1,4 +1,20 @@
 {
   "eslint.workingDirectories": ["./frontend"],
-  "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"]
+  "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "python.analysis.exclude": [
+    "**/.git",
+    "**/__pycache__",
+    "**/.venv",
+    "**/.venv-*",
+    "**/venv",
+    "**/node_modules",
+    "**/.pytest_cache",
+    "**/build",
+    "**/dist",
+    "**/*.egg-info",
+    "analytics/target",
+    "analytics/logs",
+    "analytics/dbt_packages",
+    "data"
+  ]
 }
