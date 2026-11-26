@@ -29,10 +29,17 @@ npm.cmd run dev
 Open <http://127.0.0.1:5173>. Set independent product and customer limits (1–100) and the stock threshold (0–10,000), then select **Apply**. Products qualify when stock is strictly below the threshold. **Reload dashboard** fetches all six endpoints using the applied filters. **Swagger documentation** opens FastAPI's API reference through the development proxy.
 
 ```powershell
+npm.cmd run lint
 npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
 ```
+
+Run these checks from `frontend/` after `npm.cmd ci`. ESLint checks JavaScript, TypeScript, TSX, and React Hooks usage, and fails on warnings. TypeScript checks types across the project. The automated tests execute selected code paths and assert their results. The production build compiles and bundles the dashboard.
+
+When opening the repository root in VS Code, use Microsoft's ESLint extension. The workspace settings direct it to the frontend package and enable JavaScript and TypeScript diagnostics, including JSX and TSX. Use a VS Code ESLint runtime compatible with Node.js 22.16.0.
+
+The flat config applies the recommended JavaScript and TypeScript rules and scopes browser and Node globals to their respective files. The React Hooks checks enforce hook placement and dependency arrays in application code. Compiler-specific React rules are outside this config's scope. Generated build and coverage files are ignored.
 
 ## Architecture and limits
 

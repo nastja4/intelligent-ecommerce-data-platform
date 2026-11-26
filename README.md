@@ -226,7 +226,7 @@ docker run --rm --network none --tmpfs /tmp:rw,nosuid,nodev,mode=1777 ecommerce-
 
 [GitHub Actions](.github/workflows/ci.yml) validates pull requests and pushes to `main`.
 
-1. The Windows/Ubuntu Python 3.12 matrix verifies the hash lock, runs `pip check`, loads fixtures, and runs dbt and pytest. The separate Ubuntu frontend job uses Node 22.16.0, `npm ci`, typechecking, tests, and a production build. Its npm download cache is keyed by `frontend/package-lock.json`.
+1. The Windows/Ubuntu Python 3.12 matrix verifies the hash lock, runs `pip check`, loads fixtures, and runs dbt and pytest. The separate Ubuntu frontend job uses Node 22.16.0, `npm ci`, ESLint, typechecking, tests, and a production build. Its npm download cache is keyed by `frontend/package-lock.json`. [Local frontend checks](frontend/README.md)
 2. After both jobs succeed, the container job builds and labels the image once, runs pytest with container networking disabled, and runs the Compose smoke test on that same image. The smoke test uses `.env.example` and a new project with temporary synthetic volumes. Cleanup runs after failures. Fixtures and usage are written to temporary volumes and are excluded from artifacts.
 3. Passing main pushes save the tested image archive, checksum, and image ID for three days. Publication requires an exact match between `GHCR_APPROVED_SHA` and the main push SHA. The publish job checks the checksum, loads the artifact, and verifies the image ID and source revision label before pushing the same image to the lowercase repository path. Only this job has package write permission.
 

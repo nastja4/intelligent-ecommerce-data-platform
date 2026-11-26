@@ -280,3 +280,7 @@ Verification uses a unique project-local pytest base directory with the cache pr
 1. **FR-20 → AC-22.** Derive page selection from the browser hash and observe hash changes. Verify direct entry, reload, history, invalid fragments, and keyboard access in Vite and the compiled dashboard. Preserve safe Markdown and responsive tables.
 2. **FR-21 → AC-22.** Preserve the owner's Compose runtime settings. Exercise disabled defaults, explicit dummy overrides, local-only checks and data persistence in an isolated smoke project.
 3. **FR-21 → AC-23.** Organize the portfolio README, record owner-observed production and hosted evidence, and document safe capture steps. Leave final hosted checks and SHA-approved publication to the owner.
+
+## Phase 11 · Frontend lint integration
+
+Extend **FR-18** validation with a lockfile-pinned ESLint flat config for browser source, Node tooling, and frontend tests. Run lint before the build in the existing frontend job. Verify a clean install, zero lint warnings or errors, TypeScript, tests, the production build, and workflow syntax. Keep Docker packaging and the GHCR approval gate unchanged. Record hosted verification separately under **AC-20**.
